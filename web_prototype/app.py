@@ -786,6 +786,24 @@ def test_ss_link(ss_link, timeout=10):
     
     return result
 
+def build_socks_server_config(socks_ip, socks_port, socks_user, socks_pass):
+    """构建SOCKS服务器配置"""
+    config = {
+        "address": socks_ip,
+        "port": socks_port
+    }
+    
+    # 只有在有用户名和密码时才添加认证信息
+    if socks_user and socks_pass:
+        config["users"] = [
+            {
+                "user": socks_user,
+                "pass": socks_pass
+            }
+        ]
+    
+    return config
+
 def call_xray_script(action, *args, timeout=60):
     """调用Xray脚本"""
     try:
@@ -2130,16 +2148,7 @@ def add_service():
                         "protocol": "socks",
                         "settings": {
                             "servers": [
-                                {
-                                    "address": socks_ip,
-                                    "port": int(socks_port),
-                                    "users": [
-                                        {
-                                            "user": socks_user,
-                                            "pass": socks_pass
-                                        }
-                                    ] if socks_user and socks_pass else []
-                                }
+                                build_socks_server_config(socks_ip, int(socks_port), socks_user, socks_pass)
                             ]
                         }
                     }
@@ -2186,11 +2195,38 @@ def add_service():
                 logger.error(f"保存到数据库失败: {db_error}")
                 # 继续执行，不影响文件创建
 
+            # 自动启动服务
+            try:
+                logger.info(f"正在自动启动新添加的服务: 端口 {ss_port}")
+                success, stdout, stderr = call_xray_script('start_single_service', str(ss_port))
+                
+                if success:
+                    # 更新数据库状态为运行中
+                    try:
+                        db = get_db()
+                        db.execute(
+                            'UPDATE services SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE port = ?',
+                            ('running', str(ss_port))
+                        )
+                        db.commit()
+                        logger.info(f"服务 {ss_port} 自动启动成功")
+                        startup_message = "，服务已自动启动"
+                    except Exception as db_error:
+                        logger.error(f"更新服务状态失败: {db_error}")
+                        startup_message = "，服务启动成功但状态更新失败"
+                else:
+                    logger.warning(f"服务 {ss_port} 自动启动失败: {stderr}")
+                    startup_message = f"，但自动启动失败: {stderr}"
+                    
+            except Exception as start_error:
+                logger.error(f"自动启动服务失败: {start_error}")
+                startup_message = f"，但自动启动失败: {str(start_error)}"
+
             # 记录操作日志
             log_operation('add_service', f'port_{ss_port}',
-                        f'添加服务成功 - SS端口: {ss_port}, 节点: {node_name}, SOCKS5: {socks_ip}:{socks_port}')
+                        f'添加服务成功 - SS端口: {ss_port}, 节点: {node_name}, SOCKS5: {socks_ip}:{socks_port}{startup_message}')
 
-            flash(f'服务添加成功！Shadowsocks端口: {ss_port}，节点: {node_name}', 'success')
+            flash(f'服务添加成功！Shadowsocks端口: {ss_port}，节点: {node_name}{startup_message}', 'success')
             return redirect(url_for('index'))
 
         except Exception as e:
