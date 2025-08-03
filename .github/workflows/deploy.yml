@@ -1,0 +1,221 @@
+name: 🚀 Deploy to Server
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      server_host:
+        description: 'Server IP or hostname'
+        required: true
+        default: 'your-server.com'
+      deploy_path:
+        description: 'Deploy path on server'
+        required: false
+        default: '/opt/xray-converter'
+
+env:
+  DEPLOY_USER: root
+  DEPLOY_PATH: ${{ github.event.inputs.deploy_path || '/opt/xray-converter' }}
+  SERVICE_PORT: 9090
+
+jobs:
+  deploy:
+    name: 🌐 Deploy to Production Server
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🔧 Setup SSH Key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ secrets.SERVER_HOST || github.event.inputs.server_host }} >> ~/.ssh/known_hosts
+        
+    - name: 🧪 Test SSH Connection
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ env.DEPLOY_USER }}@${{ secrets.SERVER_HOST || github.event.inputs.server_host }} "echo 'SSH connection successful'"
+        
+    - name: 📦 Deploy Application
+      run: |
+        echo "🚀 Starting deployment to ${{ secrets.SERVER_HOST || github.event.inputs.server_host }}"
+        
+        # Create deployment directory
+        ssh ${{ env.DEPLOY_USER }}@${{ secrets.SERVER_HOST || github.event.inputs.server_host }} "mkdir -p ${{ env.DEPLOY_PATH }}"
+        
+        # Upload files (excluding sensitive data and development files)
+        rsync -avz --delete --progress \
+          --exclude='.git' \
+          --exclude='.github' \
+          --exclude='data/services/*/config.json' \
+          --exclude='data/services/*/info.txt' \
+          --exclude='data/services/*/*.pid' \
+          --exclude='data/services/*/*.log' \
+          --exclude='web_prototype/venv' \
+          --exclude='web_prototype/*.db' \
+          --exclude='web_prototype/*.log' \
+          --exclude='__pycache__' \
+          --exclude='.DS_Store' \
+          --exclude='*.swp' \
+          --exclude='*.tmp' \
+          ./ ${{ env.DEPLOY_USER }}@${{ secrets.SERVER_HOST || github.event.inputs.server_host }}:${{ env.DEPLOY_PATH }}/
+          
+    - name: 🔧 Server Setup & Configuration
+      run: |
+        ssh ${{ env.DEPLOY_USER }}@${{ secrets.SERVER_HOST || github.event.inputs.server_host }} << 'EOF'
+          cd ${{ env.DEPLOY_PATH }}
+          
+          echo "📦 Installing system dependencies..."
+          if command -v apt-get >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y python3 python3-pip python3-venv curl unzip supervisor nginx
+          elif command -v yum >/dev/null 2>&1; then
+            yum update -y
+            yum install -y python3 python3-pip curl unzip supervisor nginx
+          fi
+          
+          echo "🐍 Setting up Python environment..."
+          cd web_prototype
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          
+          echo "📝 Setting file permissions..."
+          cd ..
+          chmod +x *.sh
+          chmod +x web_prototype/*.sh
+          
+          echo "🔧 Creating systemd service..."
+          cat > /etc/systemd/system/xray-converter-web.service << 'SYSTEMD'
+[Unit]
+Description=Xray Converter Web Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${{ env.DEPLOY_PATH }}/web_prototype
+Environment=PATH=${{ env.DEPLOY_PATH }}/web_prototype/venv/bin
+ExecStart=${{ env.DEPLOY_PATH }}/web_prototype/venv/bin/python app.py
+Restart=always
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=xray-converter-web
+
+[Install]
+WantedBy=multi-user.target
+SYSTEMD
+          
+          echo "🌐 Configuring Nginx reverse proxy..."
+          cat > /etc/nginx/sites-available/xray-converter << 'NGINX'
+server {
+    listen 80;
+    server_name _;
+    
+    location / {
+        proxy_pass http://127.0.0.1:${{ env.SERVICE_PORT }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket support
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+NGINX
+          
+          # Enable nginx site
+          ln -sf /etc/nginx/sites-available/xray-converter /etc/nginx/sites-enabled/
+          rm -f /etc/nginx/sites-enabled/default
+          nginx -t && systemctl restart nginx
+          
+          echo "🚀 Starting services..."
+          systemctl daemon-reload
+          systemctl enable xray-converter-web
+          systemctl restart xray-converter-web
+          systemctl enable nginx
+          
+          echo "✅ Deployment completed successfully!"
+          echo "🌐 Web interface: http://$(curl -s ifconfig.me || hostname -I | awk '{print $1}')"
+          echo "🔑 Default login: admin / admin123"
+          
+        EOF
+        
+    - name: ✅ Deployment Status
+      run: |
+        echo "🎉 Deployment completed!"
+        echo "📊 Checking service status..."
+        
+        ssh ${{ env.DEPLOY_USER }}@${{ secrets.SERVER_HOST || github.event.inputs.server_host }} << 'EOF'
+          echo "=== Service Status ==="
+          systemctl status xray-converter-web --no-pager -l
+          
+          echo -e "\n=== Nginx Status ==="
+          systemctl status nginx --no-pager -l
+          
+          echo -e "\n=== Application Logs (last 10 lines) ==="
+          journalctl -u xray-converter-web -n 10 --no-pager
+          
+          echo -e "\n=== Server Info ==="
+          echo "Server IP: $(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')"
+          echo "Deployment Path: ${{ env.DEPLOY_PATH }}"
+          echo "Service Port: ${{ env.SERVICE_PORT }}"
+          echo "Access URL: http://$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')"
+        EOF
+
+  test-deployment:
+    name: 🧪 Test Deployment
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: 🌐 Test Web Interface
+      run: |
+        echo "Testing web interface accessibility..."
+        
+        # Wait for service to start
+        sleep 30
+        
+        # Test HTTP response
+        SERVER_IP="${{ secrets.SERVER_HOST || github.event.inputs.server_host }}"
+        
+        if curl -f -s -o /dev/null -w "%{http_code}" "http://$SERVER_IP" | grep -q "200\|302"; then
+          echo "✅ Web interface is accessible"
+        else
+          echo "❌ Web interface test failed"
+          exit 1
+        fi
+        
+    - name: 📋 Deployment Summary
+      run: |
+        echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Item | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Server | ${{ secrets.SERVER_HOST || github.event.inputs.server_host }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Deploy Path | ${{ env.DEPLOY_PATH }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Service Port | ${{ env.SERVICE_PORT }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Web Access | http://${{ secrets.SERVER_HOST || github.event.inputs.server_host }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Default Login | admin / admin123 |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔧 Management Commands" >> $GITHUB_STEP_SUMMARY
+        echo "```bash" >> $GITHUB_STEP_SUMMARY
+        echo "# Check service status" >> $GITHUB_STEP_SUMMARY
+        echo "systemctl status xray-converter-web" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "# View logs" >> $GITHUB_STEP_SUMMARY
+        echo "journalctl -u xray-converter-web -f" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "# Restart service" >> $GITHUB_STEP_SUMMARY
+        echo "systemctl restart xray-converter-web" >> $GITHUB_STEP_SUMMARY
+        echo "```" >> $GITHUB_STEP_SUMMARY
