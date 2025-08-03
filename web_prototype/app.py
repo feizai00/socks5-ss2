@@ -18,6 +18,8 @@ import shutil
 import json
 from datetime import datetime, timedelta
 import hashlib
+from system_monitor import monitor
+from api_extensions import register_api_extensions
 import base64
 import urllib.parse
 import socket
@@ -49,6 +51,11 @@ MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
 # 确保目录存在
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+os.makedirs(os.path.join('data', '.recycle'), exist_ok=True)
+os.makedirs(os.path.join('data', 'backups'), exist_ok=True)
+
+# 注册API扩展
+register_api_extensions(app, login_required, DB_PATH)
 
 # Flask配置
 app.config.update(

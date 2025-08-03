@@ -72,20 +72,49 @@
 
 <!-- 服务列表 -->
 <div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">
-            <i class="fas fa-list"></i>
-            服务列表
-        </h5>
-        <div>
-            <button class="btn btn-warning btn-sm me-2" onclick="testAllSSLinks()" title="批量测试所有SS链接">
-                <i class="fas fa-wifi"></i>
-                批量测试
-            </button>
-            <a href="{{ url_for('add_service') }}" class="btn btn-primary btn-sm">
-                <i class="fas fa-plus"></i>
-                添加服务
-            </a>
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col-md-3">
+                <h5 class="mb-0">
+                    <i class="fas fa-list"></i>
+                    服务列表
+                </h5>
+            </div>
+            <div class="col-md-4">
+                <!-- 搜索和过滤 -->
+                <div class="input-group input-group-sm">
+                    <input type="text" class="form-control" id="searchInput" placeholder="搜索端口、节点名称、状态..." onkeyup="filterServices()">
+                    <select class="form-select form-select-sm" id="statusFilter" onchange="filterServices()" style="max-width: 120px;">
+                        <option value="">所有状态</option>
+                        <option value="running">运行中</option>
+                        <option value="stopped">已停止</option>
+                        <option value="error">错误</option>
+                    </select>
+                    <button class="btn btn-outline-secondary" type="button" onclick="clearFilters()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-5 text-end">
+                <!-- 批量操作 -->
+                <div class="btn-group me-2" role="group">
+                    <button class="btn btn-success btn-sm" id="batchStartBtn" onclick="batchOperation('start')" disabled title="批量启动选中服务">
+                        <i class="fas fa-play"></i> 启动
+                    </button>
+                    <button class="btn btn-danger btn-sm" id="batchStopBtn" onclick="batchOperation('stop')" disabled title="批量停止选中服务">
+                        <i class="fas fa-stop"></i> 停止
+                    </button>
+                    <button class="btn btn-warning btn-sm" id="batchTestBtn" onclick="batchOperation('test')" disabled title="批量测试选中服务">
+                        <i class="fas fa-vial"></i> 测试
+                    </button>
+                    <button class="btn btn-dark btn-sm" id="batchDeleteBtn" onclick="batchOperation('delete')" disabled title="批量删除选中服务">
+                        <i class="fas fa-trash"></i> 删除
+                    </button>
+                </div>
+                <a href="{{ url_for('add_service') }}" class="btn btn-primary btn-sm">
+                    <i class="fas fa-plus"></i> 添加服务
+                </a>
+            </div>
         </div>
     </div>
     <div class="card-body">
@@ -94,6 +123,9 @@
             <table class="table table-hover">
                 <thead>
                     <tr>
+                        <th width="40">
+                            <input type="checkbox" id="selectAll" onchange="toggleSelectAll()" title="全选/取消全选">
+                        </th>
                         <th>端口</th>
                         <th>节点名称</th>
                         <th>状态</th>
@@ -105,7 +137,10 @@
                 </thead>
                 <tbody>
                     {% for service in services %}
-                    <tr data-port="{{ service.port }}">
+                    <tr data-port="{{ service.port }}" data-status="{{ service.status }}" data-node="{{ service.get('node_name', '') }}">
+                        <td>
+                            <input type="checkbox" class="service-checkbox" value="{{ service.port }}" onchange="updateBatchButtons()">
+                        </td>
                         <td>
                             <strong>{{ service.port }}</strong>
                         </td>
@@ -283,7 +318,173 @@
 
 {% block scripts %}
 <script>
-    // 批量操作函数
+    // 全选/取消全选
+    function toggleSelectAll() {
+        const selectAll = document.getElementById('selectAll');
+        const checkboxes = document.querySelectorAll('.service-checkbox');
+        
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = selectAll.checked;
+        });
+        
+        updateBatchButtons();
+    }
+    
+    // 更新批量操作按钮状态
+    function updateBatchButtons() {
+        const selectedBoxes = document.querySelectorAll('.service-checkbox:checked');
+        const hasSelection = selectedBoxes.length > 0;
+        
+        document.getElementById('batchStartBtn').disabled = !hasSelection;
+        document.getElementById('batchStopBtn').disabled = !hasSelection;
+        document.getElementById('batchTestBtn').disabled = !hasSelection;
+        document.getElementById('batchDeleteBtn').disabled = !hasSelection;
+        
+        // 更新全选框状态
+        const allBoxes = document.querySelectorAll('.service-checkbox');
+        const selectAll = document.getElementById('selectAll');
+        
+        if (selectedBoxes.length === 0) {
+            selectAll.indeterminate = false;
+            selectAll.checked = false;
+        } else if (selectedBoxes.length === allBoxes.length) {
+            selectAll.indeterminate = false;
+            selectAll.checked = true;
+        } else {
+            selectAll.indeterminate = true;
+            selectAll.checked = false;
+        }
+    }
+    
+    // 批量操作
+    function batchOperation(action) {
+        const selectedBoxes = document.querySelectorAll('.service-checkbox:checked');
+        if (selectedBoxes.length === 0) {
+            showToast('请先选择要操作的服务', 'warning');
+            return;
+        }
+        
+        const ports = Array.from(selectedBoxes).map(cb => cb.value);
+        const actionNames = {
+            'start': '启动',
+            'stop': '停止', 
+            'test': '测试',
+            'delete': '删除'
+        };
+        
+        if (!confirm(`确认${actionNames[action]} ${ports.length} 个选中的服务？`)) {
+            return;
+        }
+        
+        // 执行批量操作
+        let completed = 0;
+        const total = ports.length;
+        
+        ports.forEach(port => {
+            switch(action) {
+                case 'start':
+                    startService(port, () => {
+                        completed++;
+                        if (completed === total) {
+                            showToast(`批量启动完成: ${total} 个服务`, 'success');
+                            setTimeout(() => location.reload(), 1000);
+                        }
+                    });
+                    break;
+                case 'stop':
+                    stopService(port, () => {
+                        completed++;
+                        if (completed === total) {
+                            showToast(`批量停止完成: ${total} 个服务`, 'success');
+                            setTimeout(() => location.reload(), 1000);
+                        }
+                    });
+                    break;
+                case 'test':
+                    testSSLink(port, () => {
+                        completed++;
+                        if (completed === total) {
+                            showToast(`批量测试完成: ${total} 个服务`, 'info');
+                        }
+                    });
+                    break;
+                case 'delete':
+                    deleteService(port, () => {
+                        completed++;
+                        if (completed === total) {
+                            showToast(`批量删除完成: ${total} 个服务`, 'success');
+                            setTimeout(() => location.reload(), 1000);
+                        }
+                    });
+                    break;
+            }
+        });
+    }
+    
+    // 搜索和过滤功能
+    function filterServices() {
+        const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+        const statusFilter = document.getElementById('statusFilter').value;
+        const rows = document.querySelectorAll('tbody tr[data-port]');
+        
+        let visibleCount = 0;
+        
+        rows.forEach(row => {
+            const port = row.getAttribute('data-port');
+            const status = row.getAttribute('data-status');
+            const nodeName = row.getAttribute('data-node');
+            
+            // 搜索匹配
+            const searchMatch = !searchTerm || 
+                port.toLowerCase().includes(searchTerm) ||
+                nodeName.toLowerCase().includes(searchTerm) ||
+                status.toLowerCase().includes(searchTerm);
+            
+            // 状态过滤
+            const statusMatch = !statusFilter || status === statusFilter;
+            
+            if (searchMatch && statusMatch) {
+                row.style.display = '';
+                visibleCount++;
+            } else {
+                row.style.display = 'none';
+                // 取消隐藏行的选中状态
+                const checkbox = row.querySelector('.service-checkbox');
+                if (checkbox) checkbox.checked = false;
+            }
+        });
+        
+        // 更新结果提示
+        updateFilterResults(visibleCount, rows.length);
+        updateBatchButtons();
+    }
+    
+    // 清除搜索和过滤
+    function clearFilters() {
+        document.getElementById('searchInput').value = '';
+        document.getElementById('statusFilter').value = '';
+        filterServices();
+    }
+    
+    // 更新过滤结果提示
+    function updateFilterResults(visible, total) {
+        let resultInfo = document.getElementById('filterResults');
+        if (!resultInfo) {
+            resultInfo = document.createElement('div');
+            resultInfo.id = 'filterResults';
+            resultInfo.className = 'text-muted small mt-2';
+            document.querySelector('.card-body').insertBefore(resultInfo, document.querySelector('.table-responsive'));
+        }
+        
+        if (visible < total) {
+            resultInfo.textContent = `显示 ${visible} / ${total} 个服务`;
+            resultInfo.style.display = 'block';
+        } else {
+            resultInfo.style.display = 'none';
+        }
+    }
+    
+    // 原有的批量操作函数（保持向后兼容）
     function startAllServices() {
         if (confirm('确认启动所有已停止的服务？')) {
             const stoppedServices = document.querySelectorAll('[id^="status-"]');
