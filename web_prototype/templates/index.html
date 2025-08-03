@@ -175,6 +175,9 @@
                                 <a href="{{ url_for('service_detail', port=service.port) }}" class="btn btn-outline-info" title="详情">
                                     <i class="fas fa-eye"></i>
                                 </a>
+                                <button type="button" class="btn btn-outline-danger" onclick="deleteService('{{ service.port }}', '{{ service.node_name }}')" title="删除">
+                                    <i class="fas fa-trash"></i>
+                                </button>
                             </div>
                         </td>
                     </tr>
@@ -420,6 +423,41 @@
                 showToast('复制失败，请手动复制', 'error');
             }
         }
+    }
+    
+    // 删除服务
+    function deleteService(port, nodeName) {
+        if (confirm(`确定要删除服务 "${nodeName}" (端口 ${port}) 吗？\n\n删除后无法恢复，请谨慎操作！`)) {
+            fetch(`/api/services/${port}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(`服务 "${nodeName}" 删除成功`, 'success');
+                    // 等待提示显示后刷新页面
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    showToast('删除失败: ' + (data.error || '未知错误'), 'error');
+                }
+            })
+            .catch(error => {
+                console.error('删除服务失败:', error);
+                showToast('删除失败: 网络错误', 'error');
+            });
+        }
+    }
+    
+    // 获取CSRF令牌
+    function getCsrfToken() {
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        return csrfMeta ? csrfMeta.getAttribute('content') : '';
     }
     
     // 显示提示消息

@@ -157,9 +157,17 @@ def init_db():
         )
     ''')
 
+    # 数据库迁移：添加删除时间字段
+    try:
+        cursor.execute('ALTER TABLE services ADD COLUMN deleted_at TIMESTAMP DEFAULT NULL')
+    except sqlite3.OperationalError:
+        # 字段已存在，忽略错误
+        pass
+
     # 创建索引
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_services_port ON services (port)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_services_status ON services (status)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_services_deleted ON services (deleted_at)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_operation_logs_user ON operation_logs (user_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_operation_logs_timestamp ON operation_logs (timestamp)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_monitor_data_service ON monitor_data (service_port)')
@@ -656,6 +664,7 @@ def call_xray_script(action, *args, timeout=60):
 
         logger.info(f"命令执行结果: 返回码={result.returncode}")
         if result.stdout:
+            logger.info(f"标准输出: {result.stdout}")
     
         if result.stderr:
             logger.warning(f"标准错误: {result.stderr}")
@@ -987,6 +996,7 @@ def api_create_service():
         }), 500
 
 @app.route('/api/services/<port>/start', methods=['POST'])
+@app.route('/api/services/<int:port>/start', methods=['POST'])
 @login_required
 def api_start_service(port):
     """API: 启动服务"""
@@ -1087,6 +1097,7 @@ def api_start_service(port):
         }), 500
 
 @app.route('/api/services/<port>/stop', methods=['POST'])
+@app.route('/api/services/<int:port>/stop', methods=['POST'])
 @login_required
 def api_stop_service(port):
     """API: 停止服务"""
@@ -1177,6 +1188,7 @@ def api_stop_service(port):
 
 
 @app.route('/api/services/<port>/restart', methods=['POST'])
+@app.route('/api/services/<int:port>/restart', methods=['POST'])
 @login_required
 def api_restart_service(port):
     """API: 重启服务"""
@@ -1242,36 +1254,59 @@ def api_delete_service(port):
                 'error': '无效的端口号'
             }), 400
 
-        # 检查服务是否存在
+        # 检查服务是否存在 (先检查文件系统，再检查数据库)
+        service_dir = os.path.join(SERVICE_DIR, port)
+        if not os.path.exists(service_dir):
+            return jsonify({
+                'success': False,
+                'error': '服务不存在'
+            }), 404
+            
+        # 尝试从数据库获取服务信息
         db = get_db()
         service = db.execute(
             'SELECT * FROM services WHERE port = ?', (port,)
         ).fetchone()
 
+        # 如果数据库中没有记录，从文件系统创建临时记录
         if not service:
-            return jsonify({
-                'success': False,
-                'error': '服务不存在'
-            }), 404
+            service = {
+                'port': port,
+                'node_name': f'服务{port}',
+                'created_by': session.get('user_id', 'admin')
+            }
 
         # 检查权限（非管理员只能删除自己创建的服务）
-        if session.get('role') != 'admin' and service['created_by'] != session.get('user_id'):
+        if session.get('role') != 'admin' and service.get('created_by') != session.get('user_id'):
             return jsonify({
                 'success': False,
                 'error': '权限不足'
             }), 403
 
         # 先停止服务
-        api_stop_service(port)
+        call_xray_script('stop_single_service', port)
 
-        # 删除服务文件
+        # 移动服务文件到回收站目录而不是直接删除
         service_dir = os.path.join(SERVICE_DIR, port)
         if os.path.exists(service_dir):
-            shutil.rmtree(service_dir)
+            recycle_dir = os.path.join(SERVICE_DIR, '.recycle')
+            os.makedirs(recycle_dir, exist_ok=True)
+            
+            import time
+            timestamp = int(time.time())
+            recycled_name = f"{port}_{timestamp}"
+            recycled_path = os.path.join(recycle_dir, recycled_name)
+            
+            shutil.move(service_dir, recycled_path)
+            logger.info(f"服务文件已移动到回收站: {recycled_path}")
 
-        # 从数据库删除
-        db.execute('DELETE FROM services WHERE port = ?', (port,))
-        db.commit()
+        # 软删除：在数据库中标记为已删除
+        if 'id' in service:  # 只有数据库中的服务才执行此操作
+            db.execute(
+                'UPDATE services SET status = ?, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE port = ?',
+                ('deleted', port)
+            )
+            db.commit()
 
         # 记录操作日志
         log_operation('delete_service', f'port_{port}',
