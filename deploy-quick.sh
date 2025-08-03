@@ -211,7 +211,9 @@ deploy_to_server() {
         
         echo '🐍 设置Python环境...'
         cd web_prototype
-        python3 -m venv venv
+        if [[ ! -d "venv" ]]; then
+            python3 -m venv venv
+        fi
         source venv/bin/activate
         pip install --upgrade pip
         pip install -r requirements.txt
