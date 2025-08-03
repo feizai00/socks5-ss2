@@ -54,8 +54,7 @@ os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 os.makedirs(os.path.join('data', '.recycle'), exist_ok=True)
 os.makedirs(os.path.join('data', 'backups'), exist_ok=True)
 
-# 注册API扩展
-register_api_extensions(app, login_required, DB_PATH)
+# API扩展将在装饰器定义后注册
 
 # Flask配置
 app.config.update(
@@ -235,6 +234,9 @@ def admin_required(f):
 
         return f(*args, **kwargs)
     return decorated_function
+
+# 注册API扩展（在装饰器定义后）
+register_api_extensions(app, login_required, DB_PATH)
 
 def log_operation(action, target=None, details=None):
     """记录操作日志"""
