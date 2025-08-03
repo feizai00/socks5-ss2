@@ -648,6 +648,21 @@ def generate_ss_link(password, server_ip, port, node_name=""):
     ss_link = f"ss://{auth_encoded}@{server_ip}:{port}/?group=#{encoded_name}"
     return ss_link
 
+def validate_port(port):
+    """验证并标准化端口号"""
+    if isinstance(port, str):
+        if not port.isdigit():
+            return None, '无效的端口号'
+        port = int(port)
+    elif not isinstance(port, int):
+        return None, '无效的端口号'
+        
+    # 确保端口在有效范围内
+    if not (1 <= port <= 65535):
+        return None, '端口号必须在1-65535范围内'
+        
+    return port, None
+
 def call_xray_script(action, *args, timeout=60):
     """调用Xray脚本"""
     try:
@@ -1002,14 +1017,15 @@ def api_start_service(port):
     """API: 启动服务"""
     try:
         # 验证端口
-        if not port.isdigit():
+        port, error = validate_port(port)
+        if error:
             return jsonify({
                 'success': False,
-                'error': '无效的端口号'
+                'error': error
             }), 400
 
         # 检查服务是否存在 (优先从文件系统检查)
-        service_dir = os.path.join(SERVICE_DIR, port)
+        service_dir = os.path.join(SERVICE_DIR, str(port))
         if not os.path.exists(service_dir):
             return jsonify({
                 'success': False,
@@ -1019,7 +1035,7 @@ def api_start_service(port):
         # 尝试从数据库获取服务信息，如果不存在则从文件系统获取
         db = get_db()
         service = db.execute(
-            'SELECT * FROM services WHERE port = ?', (port,)
+            'SELECT * FROM services WHERE port = ?', (str(port),)
         ).fetchone()
 
         # 如果数据库中没有记录，从文件系统获取基本信息
@@ -1047,7 +1063,7 @@ def api_start_service(port):
                 }), 400
 
         # 调用Shell脚本启动服务
-        success, stdout, stderr = call_xray_script('start_single_service', port)
+        success, stdout, stderr = call_xray_script('start_single_service', str(port))
 
         if success:
             # 尝试更新数据库状态 (如果数据库中有记录)
@@ -1055,7 +1071,7 @@ def api_start_service(port):
                 db = get_db()
                 db.execute(
                     'UPDATE services SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE port = ?',
-                    ('running', port)
+                    ('running', str(port))
                 )
                 db.commit()
             except Exception:
@@ -1075,7 +1091,7 @@ def api_start_service(port):
                 db = get_db()
                 db.execute(
                     'UPDATE services SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE port = ?',
-                    ('stopped', port)
+                    ('stopped', str(port))
                 )
                 db.commit()
             except Exception:
@@ -1103,14 +1119,15 @@ def api_stop_service(port):
     """API: 停止服务"""
     try:
         # 验证端口
-        if not port.isdigit():
+        port, error = validate_port(port)
+        if error:
             return jsonify({
                 'success': False,
-                'error': '无效的端口号'
+                'error': error
             }), 400
 
         # 检查服务是否存在 (优先从文件系统检查)
-        service_dir = os.path.join(SERVICE_DIR, port)
+        service_dir = os.path.join(SERVICE_DIR, str(port))
         if not os.path.exists(service_dir):
             return jsonify({
                 'success': False,
@@ -1118,7 +1135,7 @@ def api_stop_service(port):
             }), 404
 
         # 停止服务
-        pid_file = os.path.join(SERVICE_DIR, port, 'xray.pid')
+        pid_file = os.path.join(SERVICE_DIR, str(port), 'xray.pid')
         if os.path.exists(pid_file):
             try:
                 with open(pid_file, 'r') as f:
@@ -1155,7 +1172,7 @@ def api_stop_service(port):
             db = get_db()
             db.execute(
                 'UPDATE services SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE port = ?',
-                ('stopped', port)
+                ('stopped', str(port))
             )
             db.commit()
         except Exception:
@@ -1194,16 +1211,17 @@ def api_restart_service(port):
     """API: 重启服务"""
     try:
         # 验证端口
-        if not port.isdigit():
+        port, error = validate_port(port)
+        if error:
             return jsonify({
                 'success': False,
-                'error': '无效的端口号'
+                'error': error
             }), 400
 
         # 检查服务是否存在
         db = get_db()
         service = db.execute(
-            'SELECT * FROM services WHERE port = ?', (port,)
+            'SELECT * FROM services WHERE port = ?', (str(port),)
         ).fetchone()
 
         if not service:
@@ -1248,14 +1266,15 @@ def api_delete_service(port):
     """API: 删除服务"""
     try:
         # 验证端口
-        if not port.isdigit():
+        port, error = validate_port(port)
+        if error:
             return jsonify({
                 'success': False,
-                'error': '无效的端口号'
+                'error': error
             }), 400
 
         # 检查服务是否存在 (先检查文件系统，再检查数据库)
-        service_dir = os.path.join(SERVICE_DIR, port)
+        service_dir = os.path.join(SERVICE_DIR, str(port))
         if not os.path.exists(service_dir):
             return jsonify({
                 'success': False,
@@ -1265,13 +1284,13 @@ def api_delete_service(port):
         # 尝试从数据库获取服务信息
         db = get_db()
         service = db.execute(
-            'SELECT * FROM services WHERE port = ?', (port,)
+            'SELECT * FROM services WHERE port = ?', (str(port),)
         ).fetchone()
 
         # 如果数据库中没有记录，从文件系统创建临时记录
         if not service:
             service = {
-                'port': port,
+                'port': str(port),
                 'node_name': f'服务{port}',
                 'created_by': session.get('user_id', 'admin')
             }
@@ -1304,7 +1323,7 @@ def api_delete_service(port):
         if 'id' in service:  # 只有数据库中的服务才执行此操作
             db.execute(
                 'UPDATE services SET status = ?, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE port = ?',
-                ('deleted', port)
+                ('deleted', str(port))
             )
             db.commit()
 
