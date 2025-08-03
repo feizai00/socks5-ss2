@@ -77,14 +77,21 @@ def parse_ss_link(ss_link):
             return None
             
         # 解析服务器地址和端口
+        print(f"🔍 服务器部分: {server_part}")
+        
         if ':' not in server_part:
+            print("❌ 服务器部分没有找到冒号分隔符")
             return None
             
         server, port_str = server_part.rsplit(':', 1)
+        print(f"🔍 服务器地址: {server}")
+        print(f"🔍 端口字符串: {port_str}")
         
         try:
             port = int(port_str)
-        except ValueError:
+            print(f"🔍 端口号: {port}")
+        except ValueError as e:
+            print(f"❌ 端口转换失败: {e}")
             return None
             
         return {
