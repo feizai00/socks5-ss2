@@ -637,17 +637,21 @@ def get_server_ip():
 
 def generate_ss_link(password, server_ip, port, node_name=""):
     """生成Shadowsocks链接"""
-    method = "aes-256-gcm"
+    method = "chacha20-ietf-poly1305"
     
     # 编码认证信息
     auth_string = f"{method}:{password}"
     auth_encoded = base64.b64encode(auth_string.encode()).decode()
     
-    # URL编码节点名称
-    encoded_name = urllib.parse.quote(node_name)
+    # 生成完整的SS链接 (修复格式问题)
+    ss_link = f"ss://{auth_encoded}@{server_ip}:{port}"
     
-    # 生成完整的SS链接
-    ss_link = f"ss://{auth_encoded}@{server_ip}:{port}/?group=#{encoded_name}"
+    # 添加节点名称
+    if node_name:
+        encoded_name = urllib.parse.quote(node_name)
+        ss_link += f"#{encoded_name}"
+    
+    logger.info(f"生成SS链接: {ss_link}")
     return ss_link
 
 def validate_port(port):
@@ -672,51 +676,67 @@ def parse_ss_link(ss_link):
             return None
             
         # 移除ss://前缀
-        encoded_part = ss_link[5:]
+        link_part = ss_link[5:]
         
-        # 分离URL参数
-        if '?' in encoded_part:
-            encoded_part, params = encoded_part.split('?', 1)
+        # 分离节点名称
+        if '#' in link_part:
+            link_part, node_name = link_part.split('#', 1)
+            node_name = urllib.parse.unquote(node_name)
         else:
-            params = ''
+            node_name = ""
+            
+        # 移除可能的路径部分（斜杠）
+        if link_part.endswith('/'):
+            link_part = link_part[:-1]
             
         # 分离服务器地址
-        if '@' in encoded_part:
-            auth_part, server_part = encoded_part.split('@', 1)
-        else:
+        if '@' not in link_part:
             return None
             
+        auth_part, server_part = link_part.split('@', 1)
+        
         # 解码认证信息
         try:
-            auth_decoded = base64.b64decode(auth_part + '===').decode('utf-8')
-            if ':' in auth_decoded:
-                method, password = auth_decoded.split(':', 1)
-            else:
+            # 尝试直接解码
+            try:
+                auth_decoded = base64.b64decode(auth_part).decode('utf-8')
+            except:
+                # 如果失败，添加填充字符再试
+                padding = 4 - len(auth_part) % 4
+                if padding != 4:
+                    auth_part += '=' * padding
+                auth_decoded = base64.b64decode(auth_part).decode('utf-8')
+            
+            if ':' not in auth_decoded:
                 return None
-        except:
+                
+            method, password = auth_decoded.split(':', 1)
+        except Exception as e:
+            logger.error(f"解码认证信息失败: {e}")
             return None
             
         # 解析服务器地址和端口
-        if ':' in server_part:
-            server, port = server_part.rsplit(':', 1)
-            port = int(port)
-        else:
+        if ':' not in server_part:
             return None
             
-        # 解析参数
-        node_name = ''
-        if params:
-            if '#' in params:
-                node_name = params.split('#', 1)[1]
-                
+        server, port_str = server_part.rsplit(':', 1)
+        
+        try:
+            port = int(port_str)
+        except ValueError as e:
+            logger.error(f"端口转换失败: {e}")
+            return None
+            
         return {
             'method': method,
             'password': password,
             'server': server,
             'port': port,
-            'node_name': urllib.parse.unquote(node_name)
+            'node_name': node_name
         }
+        
     except Exception as e:
+        logger.error(f"解析SS链接失败: {e}")
         return None
 
 def test_ss_connection(server, port, timeout=10):
