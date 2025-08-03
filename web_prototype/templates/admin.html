@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+
+{% block page_title %}管理员面板{% endblock %}
+
+{% block content %}
+<!-- 统计卡片 -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <div class="card-title">总用户数</div>
+                        <div class="h3">{{ users|length }}</div>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-users fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <div class="card-title">活跃用户</div>
+                        <div class="h3">{{ users|selectattr('is_active')|list|length }}</div>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-user-check fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <div class="card-title">管理员</div>
+                        <div class="h3">{{ users|selectattr('role', 'equalto', 'admin')|list|length }}</div>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-user-shield fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <div class="card-title">今日操作</div>
+                        <div class="h3">{{ recent_logs|length }}</div>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-chart-line fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 用户管理 -->
+<div class="row mb-4">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-users"></i>
+                    用户管理
+                </h5>
+                <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addUserModal">
+                    <i class="fas fa-plus"></i>
+                    添加用户
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>用户名</th>
+                                <th>邮箱</th>
+                                <th>角色</th>
+                                <th>状态</th>
+                                <th>最后登录</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            <tr>
+                                <td>
+                                    <strong>{{ user.username }}</strong>
+                                </td>
+                                <td>{{ user.email or '-' }}</td>
+                                <td>
+                                    <span class="badge bg-{{ 'danger' if user.role == 'admin' else 'primary' }}">
+                                        {{ '管理员' if user.role == 'admin' else '普通用户' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-{{ 'success' if user.is_active else 'secondary' }}">
+                                        {{ '活跃' if user.is_active else '禁用' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if user.last_login %}
+                                        {{ user.last_login }}
+                                    {% else %}
+                                        <span class="text-muted">从未登录</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" onclick="editUser({{ user.id }})">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        {% if user.username != 'admin' %}
+                                        <button class="btn btn-outline-{{ 'secondary' if user.is_active else 'success' }}" 
+                                                onclick="toggleUserStatus({{ user.id }}, {{ user.is_active|lower }})">
+                                            <i class="fas fa-{{ 'ban' if user.is_active else 'check' }}"></i>
+                                        </button>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-cogs"></i>
+                    系统设置
+                </h6>
+            </div>
+            <div class="card-body">
+                {% for setting in settings %}
+                <div class="mb-3">
+                    <label class="form-label">{{ setting.description }}</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" class="form-control" 
+                               value="{{ setting.value }}" 
+                               data-setting="{{ setting.key }}">
+                        <button class="btn btn-outline-primary" 
+                                onclick="updateSetting('{{ setting.key }}')">
+                            <i class="fas fa-save"></i>
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 操作日志 -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="fas fa-history"></i>
+            最近操作日志
+        </h5>
+        <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-primary" onclick="refreshLogs()">
+                <i class="fas fa-sync-alt"></i>
+                刷新
+            </button>
+            <button class="btn btn-outline-secondary" onclick="exportLogs()">
+                <i class="fas fa-download"></i>
+                导出
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>时间</th>
+                        <th>用户</th>
+                        <th>操作</th>
+                        <th>目标</th>
+                        <th>详情</th>
+                        <th>IP地址</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in recent_logs %}
+                    <tr>
+                        <td>
+                            <small>{{ log.timestamp }}</small>
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">{{ log.username or '系统' }}</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ 
+                                'success' if log.action in ['login', 'create_service', 'start_service'] 
+                                else 'warning' if log.action in ['update_service', 'restart_service']
+                                else 'danger' if log.action in ['delete_service', 'stop_service']
+                                else 'info' 
+                            }}">
+                                {{ log.action }}
+                            </span>
+                        </td>
+                        <td>{{ log.target or '-' }}</td>
+                        <td>
+                            <small class="text-muted">{{ log.details or '-' }}</small>
+                        </td>
+                        <td>
+                            <small>{{ log.ip_address or '-' }}</small>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 添加用户模态框 -->
+<div class="modal fade" id="addUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">添加新用户</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addUserForm">
+                    <div class="mb-3">
+                        <label for="newUsername" class="form-label">用户名</label>
+                        <input type="text" class="form-control" id="newUsername" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="newEmail" class="form-label">邮箱</label>
+                        <input type="email" class="form-control" id="newEmail">
+                    </div>
+                    <div class="mb-3">
+                        <label for="newPassword" class="form-label">密码</label>
+                        <input type="password" class="form-control" id="newPassword" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="newRole" class="form-label">角色</label>
+                        <select class="form-select" id="newRole">
+                            <option value="user">普通用户</option>
+                            <option value="admin">管理员</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="addUser()">添加用户</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 添加用户
+    function addUser() {
+        const username = document.getElementById('newUsername').value;
+        const email = document.getElementById('newEmail').value;
+        const password = document.getElementById('newPassword').value;
+        const role = document.getElementById('newRole').value;
+        
+        if (!username || !password) {
+            showAlert('请填写必填字段', 'danger');
+            return;
+        }
+        
+        // 这里应该调用API添加用户
+        showAlert('用户添加功能需要后端API支持', 'info');
+        
+        // 关闭模态框
+        const modal = bootstrap.Modal.getInstance(document.getElementById('addUserModal'));
+        modal.hide();
+    }
+    
+    // 编辑用户
+    function editUser(userId) {
+        showAlert('用户编辑功能需要后端API支持', 'info');
+    }
+    
+    // 切换用户状态
+    function toggleUserStatus(userId, isActive) {
+        const action = isActive ? '禁用' : '启用';
+        if (confirm(`确认${action}此用户？`)) {
+            showAlert(`用户${action}功能需要后端API支持`, 'info');
+        }
+    }
+    
+    // 更新设置
+    function updateSetting(key) {
+        const input = document.querySelector(`input[data-setting="${key}"]`);
+        const value = input.value;
+        
+        showAlert('设置更新功能需要后端API支持', 'info');
+    }
+    
+    // 刷新日志
+    function refreshLogs() {
+        location.reload();
+    }
+    
+    // 导出日志
+    function exportLogs() {
+        showAlert('日志导出功能需要后端API支持', 'info');
+    }
+</script>
+{% endblock %}

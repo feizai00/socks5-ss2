@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+
+{% block page_title %}服务详情 - {{ service.get('node_name', '未知') }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-server"></i>
+                    {{ service.get('node_name', '未知') }}
+                </h5>
+                <span class="status-badge status-{{ service.status }}">
+                    {% if service.status == 'running' %}
+                        运行中
+                    {% elif service.status == 'stopped' %}
+                        已停止
+                    {% elif service.status == 'expired' %}
+                        已过期
+                    {% else %}
+                        未知
+                    {% endif %}
+                </span>
+            </div>
+            <div class="card-body">
+                <!-- 连接信息 -->
+                <h6 class="text-primary mb-3">
+                    <i class="fas fa-link"></i>
+                    Shadowsocks 连接信息
+                </h6>
+                
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">服务器地址</label>
+                            <div class="form-control-plaintext">YOUR_SERVER_IP</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">端口</label>
+                            <div class="form-control-plaintext">{{ service.port }}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">密码</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="password" value="{{ service.get('password', '') }}" readonly>
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassword()">
+                                    <i class="fas fa-eye" id="password-icon"></i>
+                                </button>
+                                <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('password')">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">加密方式</label>
+                            <div class="form-control-plaintext">aes-256-gcm</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 后端代理信息 -->
+                <h6 class="text-primary mb-3">
+                    <i class="fas fa-network-wired"></i>
+                    SOCKS5 后端代理
+                </h6>
+                
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">代理地址</label>
+                            <div class="form-control-plaintext">{{ service.get('socks_ip', '') }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">代理端口</label>
+                            <div class="form-control-plaintext">{{ service.get('socks_port', '') }}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                {% if service.get('socks_user') %}
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">认证用户名</label>
+                            <div class="form-control-plaintext">{{ service.get('socks_user', '') }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">认证密码</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="socks_password" value="{{ service.get('socks_pass', '') }}" readonly>
+                                <button class="btn btn-outline-secondary" type="button" onclick="toggleSocksPassword()">
+                                    <i class="fas fa-eye" id="socks-password-icon"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                <!-- SS连接链接 -->
+                <h6 class="text-primary mb-3">
+                    <i class="fas fa-qrcode"></i>
+                    连接链接
+                </h6>
+                
+                <div class="mb-3">
+                    <label class="form-label text-muted">Shadowsocks 链接</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control font-monospace" id="ss_link" 
+                               value="{{ service.get('ss_link', 'SS链接生成中...') }}" readonly>
+                        <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('ss_link')">
+                            <i class="fas fa-copy"></i>
+                            复制
+                        </button>
+                    </div>
+                    <div class="form-text">可直接导入到Shadowsocks客户端</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <!-- 服务控制 -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-cogs"></i>
+                    服务控制
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    {% if service.status == 'running' %}
+                        <button class="btn btn-warning" onclick="stopService('{{ service.port }}')">
+                            <i class="fas fa-stop"></i>
+                            停止服务
+                        </button>
+                        <button class="btn btn-info" onclick="restartService('{{ service.port }}')">
+                            <i class="fas fa-redo"></i>
+                            重启服务
+                        </button>
+                    {% else %}
+                        <button class="btn btn-success" onclick="startService('{{ service.port }}')">
+                            <i class="fas fa-play"></i>
+                            启动服务
+                        </button>
+                    {% endif %}
+                    <a href="{{ url_for('edit_service', port=service.port) }}" class="btn btn-primary">
+                        <i class="fas fa-edit"></i>
+                        编辑服务
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 服务信息 -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-info-circle"></i>
+                    服务信息
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <strong>创建时间:</strong>
+                    <div class="text-muted">{{ service.get('created', '未知') }}</div>
+                </div>
+                {% if service.get('edited') %}
+                <div class="mb-2">
+                    <strong>最后编辑:</strong>
+                    <div class="text-muted">{{ service.get('edited', '未知') }}</div>
+                </div>
+                {% endif %}
+                <div class="mb-2">
+                    <strong>有效期:</strong>
+                    {% if service.get('expires_at') == '0' %}
+                        <div class="text-success">永久有效</div>
+                    {% elif service.get('expires_at') %}
+                        {% set expires_timestamp = service.expires_at | int %}
+                        {% set expires_date = moment(expires_timestamp) %}
+                        <div class="text-muted">{{ expires_date.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+                        {% set current_timestamp = moment().timestamp() %}
+                        {% if expires_timestamp > current_timestamp %}
+                            {% set remaining_days = ((expires_timestamp - current_timestamp) / 86400) | int %}
+                            <small class="text-info">剩余 {{ remaining_days }} 天</small>
+                        {% else %}
+                            <small class="text-danger">已过期</small>
+                        {% endif %}
+                    {% else %}
+                        <div class="text-muted">未知</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- 日志查看 -->
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-file-alt"></i>
+                    服务日志
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <button class="btn btn-sm btn-outline-primary" onclick="viewLogs('{{ service.port }}')">
+                        <i class="fas fa-eye"></i>
+                        查看日志
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="clearLogs('{{ service.port }}')">
+                        <i class="fas fa-trash"></i>
+                        清空日志
+                    </button>
+                </div>
+                <div id="log-content" class="bg-dark text-light p-2 rounded" style="height: 200px; overflow-y: auto; font-family: monospace; font-size: 0.8em;">
+                    点击"查看日志"加载最新日志...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 返回按钮 -->
+<div class="mt-3">
+    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i>
+        返回服务列表
+    </a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 切换密码显示
+    function togglePassword() {
+        const passwordInput = document.getElementById('password');
+        const passwordIcon = document.getElementById('password-icon');
+        
+        if (passwordInput.type === 'password') {
+            passwordInput.type = 'text';
+            passwordIcon.className = 'fas fa-eye-slash';
+        } else {
+            passwordInput.type = 'password';
+            passwordIcon.className = 'fas fa-eye';
+        }
+    }
+    
+    function toggleSocksPassword() {
+        const passwordInput = document.getElementById('socks_password');
+        const passwordIcon = document.getElementById('socks-password-icon');
+        
+        if (passwordInput.type === 'password') {
+            passwordInput.type = 'text';
+            passwordIcon.className = 'fas fa-eye-slash';
+        } else {
+            passwordInput.type = 'password';
+            passwordIcon.className = 'fas fa-eye';
+        }
+    }
+    
+    // 复制到剪贴板
+    function copyToClipboard(elementId) {
+        const element = document.getElementById(elementId);
+        element.select();
+        document.execCommand('copy');
+        showAlert('已复制到剪贴板', 'success');
+    }
+    
+    // 查看日志
+    function viewLogs(port) {
+        fetch(`/api/services/${port}/logs`)
+            .then(response => response.text())
+            .then(data => {
+                document.getElementById('log-content').textContent = data || '暂无日志内容';
+            })
+            .catch(error => {
+                document.getElementById('log-content').textContent = '加载日志失败: ' + error;
+            });
+    }
+    
+    // 清空日志
+    function clearLogs(port) {
+        if (confirm('确认清空日志？')) {
+            fetch(`/api/services/${port}/logs`, { method: 'DELETE' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('log-content').textContent = '日志已清空';
+                        showAlert('日志已清空', 'success');
+                    } else {
+                        showAlert('清空日志失败', 'danger');
+                    }
+                });
+        }
+    }
+    
+    // 日期格式化函数
+    function moment(timestamp) {
+        if (timestamp) {
+            return new Date(timestamp * 1000);
+        }
+        return new Date();
+    }
+    
+    // Base64编码函数 (简化版)
+    function btoa(str) {
+        return window.btoa(str);
+    }
+</script>
+{% endblock %}

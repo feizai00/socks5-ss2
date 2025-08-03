@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block page_title %}添加服务{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-plus"></i>
+                    添加新服务
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>提示:</strong> 填写以下信息创建新的Shadowsocks服务。端口范围：1024-65535，密码建议使用强密码。
+                </div>
+
+                <form method="POST" action="{{ url_for('add_service') }}">
+                    <!-- 基本信息 -->
+                    <div class="mb-4">
+                        <h6 class="text-primary">
+                            <i class="fas fa-info-circle"></i>
+                            基本信息
+                        </h6>
+                        <hr>
+
+                        <div class="mb-3">
+                            <label for="node_name" class="form-label">节点名称</label>
+                            <input type="text" class="form-control" id="node_name" name="node_name"
+                                   placeholder="例如: 美国节点1" required>
+                            <div class="form-text">用于标识此SOCKS5代理的名称</div>
+                        </div>
+                    </div>
+
+                    <!-- SOCKS5代理设置 -->
+                    <div class="mb-4">
+                        <h6 class="text-primary">
+                            <i class="fas fa-network-wired"></i>
+                            SOCKS5代理设置
+                        </h6>
+                        <hr>
+
+                        <div class="mb-3">
+                            <label for="socks_input" class="form-label">SOCKS5代理信息</label>
+                            <input type="text" class="form-control" id="socks_input" name="socks_input"
+                                   placeholder="IP:端口 或 IP:端口:用户名:密码" required>
+                            <div class="form-text">
+                                格式示例:<br>
+                                • 无认证: 149.119.147.4:44496<br>
+                                • 有认证: 149.119.147.4:44496:user:pass
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>说明:</strong> 系统将自动为您生成Shadowsocks端口和密码，您只需提供SOCKS5代理信息即可。
+                        </div>
+                    </div>
+
+                    <!-- 有效期设置 -->
+                    <div class="mb-4">
+                        <h6 class="text-primary">
+                            <i class="fas fa-clock"></i>
+                            有效期设置
+                        </h6>
+                        <hr>
+                        
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="expiry_type" id="permanent" 
+                                               value="permanent" checked>
+                                        <label class="form-check-label" for="permanent">
+                                            永久有效
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="expiry_type" id="7days" value="7days">
+                                        <label class="form-check-label" for="7days">
+                                            7天
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="expiry_type" id="30days" value="30days">
+                                        <label class="form-check-label" for="30days">
+                                            30天
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="expiry_type" id="90days" value="90days">
+                                        <label class="form-check-label" for="90days">
+                                            90天
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="expiry_type" id="custom" value="custom">
+                                        <label class="form-check-label" for="custom">
+                                            自定义:
+                                        </label>
+                                        <input type="number" class="form-control d-inline-block ms-2" style="width: 100px;" 
+                                               id="custom_days" name="custom_days" placeholder="天数" min="1">
+                                        <span class="ms-1">天</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 操作按钮 -->
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-plus"></i>
+                            添加服务
+                        </button>
+                        <a href="{{ url_for('index') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i>
+                            返回首页
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 自定义天数选择处理
+    document.getElementById('custom').addEventListener('change', function() {
+        if (this.checked) {
+            document.getElementById('custom_days').focus();
+        }
+    });
+
+    document.getElementById('custom_days').addEventListener('focus', function() {
+        document.getElementById('custom').checked = true;
+    });
+</script>
+{% endblock %}

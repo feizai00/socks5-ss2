@@ -1,0 +1,463 @@
+{% extends "base.html" %}
+
+{% block page_title %}仪表板{% endblock %}
+
+{% block content %}
+<!-- 统计卡片 -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stats-card">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-uppercase mb-1">总服务</div>
+                        <div class="stats-number">{{ stats.total }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-server fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-uppercase mb-1">运行中</div>
+                        <div class="stats-number">{{ stats.running }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-play-circle fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card" style="background: linear-gradient(135deg, #dc3545 0%, #fd7e14 100%); color: white;">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-uppercase mb-1">已停止</div>
+                        <div class="stats-number">{{ stats.stopped }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-stop-circle fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card" style="background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%); color: white;">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-uppercase mb-1">已过期</div>
+                        <div class="stats-number">{{ stats.expired }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-clock fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 服务列表 -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="fas fa-list"></i>
+            服务列表
+        </h5>
+        <a href="{{ url_for('add_service') }}" class="btn btn-primary btn-sm">
+            <i class="fas fa-plus"></i>
+            添加服务
+        </a>
+    </div>
+    <div class="card-body">
+        {% if services %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>端口</th>
+                        <th>节点名称</th>
+                        <th>状态</th>
+                        <th>后端代理</th>
+                        <th>SS链接</th>
+                        <th>有效期</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for service in services %}
+                    <tr>
+                        <td>
+                            <strong>{{ service.port }}</strong>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('service_detail', port=service.port) }}" class="text-decoration-none">
+                                {{ service.get('node_name', '未知') }}
+                            </a>
+                        </td>
+                        <td>
+                            <span id="status-{{ service.port }}" class="status-badge status-{{ service.status }}">
+                                {% if service.status == 'running' %}
+                                    运行中
+                                {% elif service.status == 'stopped' %}
+                                    已停止
+                                {% elif service.status == 'expired' %}
+                                    已过期
+                                {% else %}
+                                    未知
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            {{ service.get('socks_ip', '') }}:{{ service.get('socks_port', '') }}
+                        </td>
+                        <td>
+                            {% if service.get('ss_link') %}
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" 
+                                            onclick="showSSLink('{{ service.port }}', '{{ service.ss_link }}')" title="查看SS链接">
+                                        <i class="fas fa-link"></i>
+                                        查看链接
+                                    </button>
+                                    <button class="btn btn-outline-success btn-sm" type="button" 
+                                            onclick="copySSLink('{{ service.port }}', '{{ service.ss_link }}')" title="复制SS链接">
+                                        <i class="fas fa-copy"></i>
+                                        复制
+                                    </button>
+                                </div>
+                                <!-- 隐藏的输入框用于复制 -->
+                                <input type="hidden" id="ss-link-{{ service.port }}" value="{{ service.ss_link }}">
+                            {% else %}
+                                <span class="text-muted">未生成</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if service.get('expires_at') == '0' %}
+                                <span class="text-success">永久</span>
+                            {% elif service.get('expires_at') %}
+                                {% set expires_timestamp = service.expires_at | int %}
+                                {% set expires_date = moment(expires_timestamp) %}
+                                <span class="text-muted">{{ expires_date.strftime('%Y-%m-%d') }}</span>
+                            {% else %}
+                                <span class="text-muted">未知</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                {% if service.status == 'running' %}
+                                    <button type="button" class="btn btn-outline-warning" onclick="stopService('{{ service.port }}')" title="停止">
+                                        <i class="fas fa-stop"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-info" onclick="restartService('{{ service.port }}')" title="重启">
+                                        <i class="fas fa-redo"></i>
+                                    </button>
+                                {% else %}
+                                    <button type="button" class="btn btn-outline-success" onclick="startService('{{ service.port }}')" title="启动">
+                                        <i class="fas fa-play"></i>
+                                    </button>
+                                {% endif %}
+                                <a href="{{ url_for('edit_service', port=service.port) }}" class="btn btn-outline-primary" title="编辑">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <a href="{{ url_for('service_detail', port=service.port) }}" class="btn btn-outline-info" title="详情">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">暂无服务</h5>
+            <p class="text-muted">点击上方按钮添加第一个服务</p>
+            <a href="{{ url_for('add_service') }}" class="btn btn-primary">
+                <i class="fas fa-plus"></i>
+                添加服务
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 快速操作 -->
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-bolt"></i>
+                    快速操作
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-success" onclick="startAllServices()">
+                        <i class="fas fa-play"></i>
+                        启动所有服务
+                    </button>
+                    <button class="btn btn-outline-warning" onclick="stopAllServices()">
+                        <i class="fas fa-stop"></i>
+                        停止所有服务
+                    </button>
+                    <button class="btn btn-outline-info" onclick="restartAllServices()">
+                        <i class="fas fa-redo"></i>
+                        重启所有服务
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-info-circle"></i>
+                    系统信息
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <small class="text-muted">Xray版本</small>
+                        <div>v1.8.0</div>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-muted">运行时间</small>
+                        <div>2天3小时</div>
+                    </div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-6">
+                        <small class="text-muted">CPU使用率</small>
+                        <div class="progress progress-sm">
+                            <div class="progress-bar" style="width: 25%"></div>
+                        </div>
+                        <small>25%</small>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-muted">内存使用率</small>
+                        <div class="progress progress-sm">
+                            <div class="progress-bar bg-info" style="width: 60%"></div>
+                        </div>
+                        <small>60%</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 批量操作函数
+    function startAllServices() {
+        if (confirm('确认启动所有已停止的服务？')) {
+            const stoppedServices = document.querySelectorAll('[id^="status-"]');
+            stoppedServices.forEach(element => {
+                if (element.textContent.trim() === '已停止') {
+                    const port = element.id.replace('status-', '');
+                    startService(port);
+                }
+            });
+        }
+    }
+    
+    function stopAllServices() {
+        if (confirm('确认停止所有运行中的服务？')) {
+            const runningServices = document.querySelectorAll('[id^="status-"]');
+            runningServices.forEach(element => {
+                if (element.textContent.trim() === '运行中') {
+                    const port = element.id.replace('status-', '');
+                    stopService(port);
+                }
+            });
+        }
+    }
+    
+    function restartAllServices() {
+        if (confirm('确认重启所有服务？')) {
+            const allServices = document.querySelectorAll('[id^="status-"]');
+            allServices.forEach(element => {
+                const port = element.id.replace('status-', '');
+                restartService(port);
+            });
+        }
+    }
+    
+    // 添加日期格式化函数
+    function moment(timestamp) {
+        return new Date(timestamp * 1000);
+    }
+    
+    // 显示SS链接的模态框
+    function showSSLink(port, ssLink) {
+        // 创建模态框HTML
+        const modalHtml = `
+            <div class="modal fade" id="ssLinkModal-${port}" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">
+                                <i class="fas fa-link text-primary"></i>
+                                服务 ${port} - Shadowsocks 链接
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Shadowsocks 链接:</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control font-monospace" 
+                                           value="${ssLink}" readonly id="modal-ss-link-${port}">
+                                    <button class="btn btn-outline-success" type="button" 
+                                            onclick="copyFromModal('modal-ss-link-${port}', this)">
+                                        <i class="fas fa-copy"></i> 复制
+                                    </button>
+                                </div>
+                                <div class="form-text">点击右侧按钮复制链接，或者选中文本手动复制</div>
+                            </div>
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i>
+                                <strong>使用说明:</strong> 将此链接导入到您的 Shadowsocks 客户端即可使用
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                            <button type="button" class="btn btn-primary" 
+                                    onclick="copyFromModal('modal-ss-link-${port}', this)">
+                                <i class="fas fa-copy"></i> 复制链接
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // 移除已存在的模态框
+        const existingModal = document.getElementById(`ssLinkModal-${port}`);
+        if (existingModal) {
+            existingModal.remove();
+        }
+        
+        // 添加新模态框到页面
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        // 显示模态框
+        const modal = new bootstrap.Modal(document.getElementById(`ssLinkModal-${port}`));
+        modal.show();
+        
+        // 模态框关闭后删除DOM元素
+        document.getElementById(`ssLinkModal-${port}`).addEventListener('hidden.bs.modal', function() {
+            this.remove();
+        });
+    }
+    
+    // 快速复制SS链接
+    function copySSLink(port, ssLink) {
+        // 创建临时文本区域
+        const textArea = document.createElement('textarea');
+        textArea.value = ssLink;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+            document.execCommand('copy');
+            // 显示成功提示
+            showToast('SS链接已复制到剪贴板', 'success');
+        } catch (err) {
+            console.error('复制失败:', err);
+            showToast('复制失败，请手动复制', 'error');
+        }
+        
+        document.body.removeChild(textArea);
+    }
+    
+    // 从模态框复制
+    function copyFromModal(elementId, btnElement) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            element.select();
+            element.setSelectionRange(0, 99999);
+            try {
+                document.execCommand('copy');
+                // 显示复制成功提示
+                const originalText = btnElement.innerHTML;
+                btnElement.innerHTML = '<i class="fas fa-check"></i> 已复制';
+                btnElement.classList.remove('btn-outline-success', 'btn-primary');
+                btnElement.classList.add('btn-success');
+                setTimeout(() => {
+                    btnElement.innerHTML = originalText;
+                    btnElement.classList.remove('btn-success');
+                    btnElement.classList.add(originalText.includes('复制链接') ? 'btn-primary' : 'btn-outline-success');
+                }, 1500);
+                showToast('SS链接已复制到剪贴板', 'success');
+            } catch (err) {
+                console.error('复制失败:', err);
+                showToast('复制失败，请手动复制', 'error');
+            }
+        }
+    }
+    
+    // 显示提示消息
+    function showToast(message, type = 'info') {
+        // 创建toast容器（如果不存在）
+        let toastContainer = document.getElementById('toast-container');
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.id = 'toast-container';
+            toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+            toastContainer.style.zIndex = '1056';
+            document.body.appendChild(toastContainer);
+        }
+        
+        const toastId = 'toast-' + Date.now();
+        const bgClass = type === 'success' ? 'bg-success' : type === 'error' ? 'bg-danger' : 'bg-info';
+        
+        const toastHtml = `
+            <div id="${toastId}" class="toast show ${bgClass} text-white" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="d-flex">
+                    <div class="toast-body">
+                        <i class="fas fa-${type === 'success' ? 'check' : type === 'error' ? 'exclamation-triangle' : 'info'}"></i>
+                        ${message}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            </div>
+        `;
+        
+        toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+        
+        // 3秒后自动移除
+        setTimeout(() => {
+            const toastElement = document.getElementById(toastId);
+            if (toastElement) {
+                toastElement.remove();
+            }
+        }, 3000);
+    }
+</script>
+{% endblock %}

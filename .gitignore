@@ -1,0 +1,76 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+*.out
+
+# Runtime files
+*.pid
+*.sock
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Configuration (可能包含敏感信息)
+config.local.*
+.env
+.env.local
+
+# Uploads
+uploads/*
+!uploads/.gitkeep
+
+# Data (服务数据可能包含敏感信息)
+data/services/*/config.json
+data/services/*/info.txt
+data/services/*/*.pid
+data/services/*/*.log
+
+# 但保留目录结构
+!data/
+!data/services/
+!data/services/.gitkeep

@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+
+{% block page_title %}日志管理{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-file-alt"></i>
+                    系统日志
+                </h5>
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-outline-primary" onclick="refreshLogs()">
+                        <i class="fas fa-sync-alt"></i>
+                        刷新
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="clearAllLogs()">
+                        <i class="fas fa-trash"></i>
+                        清空所有日志
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- 日志过滤器 -->
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <select class="form-select" id="log-level">
+                            <option value="">所有级别</option>
+                            <option value="INFO">信息</option>
+                            <option value="WARNING">警告</option>
+                            <option value="ERROR">错误</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select" id="log-service">
+                            <option value="">所有服务</option>
+                            <option value="system">系统</option>
+                            <option value="monitor">监控</option>
+                            <option value="8080">端口8080</option>
+                            <option value="8081">端口8081</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" class="form-control" id="log-search" placeholder="搜索日志内容...">
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-primary w-100" onclick="filterLogs()">
+                            <i class="fas fa-search"></i>
+                            搜索
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 日志内容 -->
+                <div class="bg-dark text-light p-3 rounded" style="height: 500px; overflow-y: auto; font-family: monospace; font-size: 0.9em;" id="log-container">
+                    <div id="log-content">
+                        <!-- 模拟日志内容 -->
+                        <div class="log-entry" data-level="INFO" data-service="system">
+                            <span class="text-info">[2024-01-15 10:30:15]</span> 
+                            <span class="badge bg-info">INFO</span> 
+                            <span class="text-warning">[SYSTEM]</span> 
+                            Xray转换器Web服务启动成功
+                        </div>
+                        <div class="log-entry" data-level="INFO" data-service="8080">
+                            <span class="text-info">[2024-01-15 10:30:20]</span> 
+                            <span class="badge bg-info">INFO</span> 
+                            <span class="text-warning">[8080]</span> 
+                            服务启动成功，监听端口8080
+                        </div>
+                        <div class="log-entry" data-level="INFO" data-service="8081">
+                            <span class="text-info">[2024-01-15 10:30:25]</span> 
+                            <span class="badge bg-info">INFO</span> 
+                            <span class="text-warning">[8081]</span> 
+                            服务启动成功，监听端口8081
+                        </div>
+                        <div class="log-entry" data-level="INFO" data-service="monitor">
+                            <span class="text-info">[2024-01-15 10:30:30]</span> 
+                            <span class="badge bg-info">INFO</span> 
+                            <span class="text-warning">[MONITOR]</span> 
+                            服务监控启动，检查间隔30秒
+                        </div>
+                        <div class="log-entry" data-level="WARNING" data-service="8082">
+                            <span class="text-info">[2024-01-15 10:31:00]</span> 
+                            <span class="badge bg-warning">WARNING</span> 
+                            <span class="text-warning">[8082]</span> 
+                            连接到SOCKS5代理失败，正在重试...
+                        </div>
+                        <div class="log-entry" data-level="INFO" data-service="8082">
+                            <span class="text-info">[2024-01-15 10:31:05]</span> 
+                            <span class="badge bg-info">INFO</span> 
+                            <span class="text-warning">[8082]</span> 
+                            SOCKS5代理连接恢复正常
+                        </div>
+                        <div class="log-entry" data-level="ERROR" data-service="8083">
+                            <span class="text-info">[2024-01-15 10:32:00]</span> 
+                            <span class="badge bg-danger">ERROR</span> 
+                            <span class="text-warning">[8083]</span> 
+                            服务启动失败：端口已被占用
+                        </div>
+                        <div class="log-entry" data-level="INFO" data-service="monitor">
+                            <span class="text-info">[2024-01-15 10:32:30]</span> 
+                            <span class="badge bg-info">INFO</span> 
+                            <span class="text-warning">[MONITOR]</span> 
+                            检测到端口8083服务停止，正在重启...
+                        </div>
+                        <div class="log-entry" data-level="INFO" data-service="8083">
+                            <span class="text-info">[2024-01-15 10:32:35]</span> 
+                            <span class="badge bg-info">INFO</span> 
+                            <span class="text-warning">[8083]</span> 
+                            服务重启成功
+                        </div>
+                        <div class="log-entry" data-level="INFO" data-service="system">
+                            <span class="text-info">[2024-01-15 10:33:00]</span> 
+                            <span class="badge bg-info">INFO</span> 
+                            <span class="text-warning">[SYSTEM]</span> 
+                            用户admin登录成功
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 日志统计 -->
+                <div class="row mt-3">
+                    <div class="col-md-12">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <small class="text-muted">
+                                    显示 <span id="visible-logs">10</span> 条日志，
+                                    总计 <span id="total-logs">10</span> 条
+                                </small>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-outline-primary" onclick="exportLogs()">
+                                    <i class="fas fa-download"></i>
+                                    导出日志
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 实时日志开关 -->
+<div class="row mt-3">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0">实时日志</h6>
+                        <small class="text-muted">自动显示新的日志条目</small>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="realtime-logs" checked>
+                        <label class="form-check-label" for="realtime-logs">
+                            启用实时更新
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let logUpdateInterval;
+    
+    // 过滤日志
+    function filterLogs() {
+        const level = document.getElementById('log-level').value;
+        const service = document.getElementById('log-service').value;
+        const search = document.getElementById('log-search').value.toLowerCase();
+        
+        const logEntries = document.querySelectorAll('.log-entry');
+        let visibleCount = 0;
+        
+        logEntries.forEach(entry => {
+            let show = true;
+            
+            // 级别过滤
+            if (level && entry.dataset.level !== level) {
+                show = false;
+            }
+            
+            // 服务过滤
+            if (service && entry.dataset.service !== service) {
+                show = false;
+            }
+            
+            // 搜索过滤
+            if (search && !entry.textContent.toLowerCase().includes(search)) {
+                show = false;
+            }
+            
+            entry.style.display = show ? 'block' : 'none';
+            if (show) visibleCount++;
+        });
+        
+        document.getElementById('visible-logs').textContent = visibleCount;
+    }
+    
+    // 刷新日志
+    function refreshLogs() {
+        // 模拟刷新
+        showAlert('日志已刷新', 'success');
+        addNewLogEntry('INFO', 'system', '日志刷新完成');
+    }
+    
+    // 清空所有日志
+    function clearAllLogs() {
+        if (confirm('确认清空所有日志？此操作不可恢复。')) {
+            document.getElementById('log-content').innerHTML = '';
+            document.getElementById('visible-logs').textContent = '0';
+            document.getElementById('total-logs').textContent = '0';
+            showAlert('所有日志已清空', 'success');
+        }
+    }
+    
+    // 导出日志
+    function exportLogs() {
+        const logContent = document.getElementById('log-content').textContent;
+        const blob = new Blob([logContent], { type: 'text/plain' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `xray-logs-${new Date().toISOString().split('T')[0]}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        showAlert('日志导出成功', 'success');
+    }
+    
+    // 添加新日志条目
+    function addNewLogEntry(level, service, message) {
+        const now = new Date();
+        const timestamp = now.toISOString().replace('T', ' ').split('.')[0];
+        
+        const levelColors = {
+            'INFO': 'info',
+            'WARNING': 'warning',
+            'ERROR': 'danger'
+        };
+        
+        const logEntry = document.createElement('div');
+        logEntry.className = 'log-entry';
+        logEntry.dataset.level = level;
+        logEntry.dataset.service = service;
+        logEntry.innerHTML = `
+            <span class="text-info">[${timestamp}]</span> 
+            <span class="badge bg-${levelColors[level]}">${level}</span> 
+            <span class="text-warning">[${service.toUpperCase()}]</span> 
+            ${message}
+        `;
+        
+        const logContent = document.getElementById('log-content');
+        logContent.appendChild(logEntry);
+        
+        // 滚动到底部
+        const container = document.getElementById('log-container');
+        container.scrollTop = container.scrollHeight;
+        
+        // 更新计数
+        const totalLogs = document.querySelectorAll('.log-entry').length;
+        document.getElementById('total-logs').textContent = totalLogs;
+        
+        // 重新应用过滤器
+        filterLogs();
+    }
+    
+    // 模拟实时日志
+    function simulateRealtimeLogs() {
+        if (!document.getElementById('realtime-logs').checked) {
+            return;
+        }
+        
+        const levels = ['INFO', 'WARNING', 'ERROR'];
+        const services = ['system', 'monitor', '8080', '8081', '8082'];
+        const messages = [
+            '新客户端连接',
+            '数据传输完成',
+            '连接断开',
+            '服务状态检查',
+            '配置重新加载',
+            '内存使用率检查',
+            '网络连接测试',
+            '日志轮转完成'
+        ];
+        
+        const level = levels[Math.floor(Math.random() * levels.length)];
+        const service = services[Math.floor(Math.random() * services.length)];
+        const message = messages[Math.floor(Math.random() * messages.length)];
+        
+        addNewLogEntry(level, service, message);
+    }
+    
+    // 实时日志开关
+    document.getElementById('realtime-logs').addEventListener('change', function() {
+        if (this.checked) {
+            logUpdateInterval = setInterval(simulateRealtimeLogs, 5000);
+            showAlert('实时日志已启用', 'info');
+        } else {
+            clearInterval(logUpdateInterval);
+            showAlert('实时日志已禁用', 'info');
+        }
+    });
+    
+    // 搜索框回车事件
+    document.getElementById('log-search').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            filterLogs();
+        }
+    });
+    
+    // 初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        // 启动实时日志
+        logUpdateInterval = setInterval(simulateRealtimeLogs, 5000);
+        
+        // 初始化计数
+        const totalLogs = document.querySelectorAll('.log-entry').length;
+        document.getElementById('total-logs').textContent = totalLogs;
+        document.getElementById('visible-logs').textContent = totalLogs;
+    });
+</script>
+{% endblock %}

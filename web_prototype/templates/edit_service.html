@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+
+{% block page_title %}编辑服务 - 端口 {{ service.port }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-edit"></i>
+                    编辑服务 - 端口 {{ service.port }}
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('update_service', port=service.port) }}">
+                    <!-- 基本信息 -->
+                    <div class="mb-4">
+                        <h6 class="text-primary">
+                            <i class="fas fa-info-circle"></i>
+                            基本信息
+                        </h6>
+                        <hr>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="node_name" class="form-label">节点名称</label>
+                                    <input type="text" class="form-control" id="node_name" name="node_name" 
+                                           value="{{ service.get('node_name', '') }}" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="ss_port" class="form-label">SS端口</label>
+                                    <input type="number" class="form-control" id="ss_port" name="ss_port" 
+                                           value="{{ service.port }}" readonly>
+                                    <div class="form-text">端口号不可修改</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="ss_password" class="form-label">SS密码</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="ss_password" name="ss_password" 
+                                       value="{{ service.get('password', '') }}" required>
+                                <button class="btn btn-outline-secondary" type="button" onclick="generatePassword()">
+                                    <i class="fas fa-random"></i>
+                                    生成
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SOCKS5代理设置 -->
+                    <div class="mb-4">
+                        <h6 class="text-primary">
+                            <i class="fas fa-network-wired"></i>
+                            SOCKS5代理设置
+                        </h6>
+                        <hr>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="socks_ip" class="form-label">代理地址</label>
+                                    <input type="text" class="form-control" id="socks_ip" name="socks_ip" 
+                                           value="{{ service.get('socks_ip', '') }}" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="socks_port" class="form-label">代理端口</label>
+                                    <input type="number" class="form-control" id="socks_port" name="socks_port" 
+                                           value="{{ service.get('socks_port', '') }}" required>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="socks_user" class="form-label">用户名 (可选)</label>
+                                    <input type="text" class="form-control" id="socks_user" name="socks_user" 
+                                           value="{{ service.get('socks_user', '') }}">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="socks_pass" class="form-label">密码 (可选)</label>
+                                    <input type="password" class="form-control" id="socks_pass" name="socks_pass" 
+                                           value="{{ service.get('socks_pass', '') }}">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 有效期设置 -->
+                    <div class="mb-4">
+                        <h6 class="text-primary">
+                            <i class="fas fa-clock"></i>
+                            有效期设置
+                        </h6>
+                        <hr>
+                        
+                        <div class="row">
+                            <div class="col-md-12">
+                                {% set current_expires = service.get('expires_at', '0') %}
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="expiry_type" id="permanent" 
+                                               value="permanent" {% if current_expires == '0' %}checked{% endif %}>
+                                        <label class="form-check-label" for="permanent">
+                                            永久有效
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="expiry_type" id="7days" value="7days">
+                                        <label class="form-check-label" for="7days">
+                                            7天
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="expiry_type" id="30days" value="30days">
+                                        <label class="form-check-label" for="30days">
+                                            30天
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="expiry_type" id="90days" value="90days">
+                                        <label class="form-check-label" for="90days">
+                                            90天
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="expiry_type" id="custom" value="custom">
+                                        <label class="form-check-label" for="custom">
+                                            自定义:
+                                        </label>
+                                        <input type="number" class="form-control d-inline-block ms-2" style="width: 100px;" 
+                                               id="custom_days" name="custom_days" placeholder="天数" min="1">
+                                        <span class="ms-1">天</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {% if current_expires != '0' %}
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            当前有效期至: {{ moment(current_expires|int).strftime('%Y-%m-%d %H:%M:%S') }}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- 操作按钮 -->
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i>
+                            保存更改
+                        </button>
+                        <button type="button" class="btn btn-info" onclick="restartService('{{ service.port }}')">
+                            <i class="fas fa-redo"></i>
+                            重启服务
+                        </button>
+                        <a href="{{ url_for('service_detail', port=service.port) }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i>
+                            返回详情
+                        </a>
+                        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-home"></i>
+                            返回首页
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <!-- 当前状态 -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-info"></i>
+                    当前状态
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <strong>服务状态:</strong>
+                    <span class="status-badge status-{{ service.status }} ms-2">
+                        {% if service.status == 'running' %}
+                            运行中
+                        {% elif service.status == 'stopped' %}
+                            已停止
+                        {% elif service.status == 'expired' %}
+                            已过期
+                        {% else %}
+                            未知
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="mb-2">
+                    <strong>创建时间:</strong>
+                    <div class="text-muted">{{ service.get('created', '未知') }}</div>
+                </div>
+                {% if service.get('edited') %}
+                <div class="mb-2">
+                    <strong>最后编辑:</strong>
+                    <div class="text-muted">{{ service.get('edited', '未知') }}</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- 连接信息预览 -->
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-link"></i>
+                    连接信息预览
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <strong>服务器:</strong>
+                    <div class="text-muted">YOUR_SERVER_IP</div>
+                </div>
+                <div class="mb-2">
+                    <strong>端口:</strong>
+                    <div class="text-muted">{{ service.port }}</div>
+                </div>
+                <div class="mb-2">
+                    <strong>密码:</strong>
+                    <div class="text-muted font-monospace">{{ service.get('password', '') }}</div>
+                </div>
+                <div class="mb-2">
+                    <strong>加密:</strong>
+                    <div class="text-muted">aes-256-gcm</div>
+                </div>
+                <div class="mb-2">
+                    <strong>后端代理:</strong>
+                    <div class="text-muted">{{ service.get('socks_ip', '') }}:{{ service.get('socks_port', '') }}</div>
+                </div>
+                
+                <hr>
+                <div class="text-center">
+                    <a href="{{ url_for('service_detail', port=service.port) }}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-eye"></i>
+                        查看完整信息
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 生成随机密码
+    function generatePassword() {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let password = '';
+        for (let i = 0; i < 12; i++) {
+            password += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        document.getElementById('ss_password').value = password;
+    }
+    
+    // 自定义天数选择处理
+    document.getElementById('custom').addEventListener('change', function() {
+        if (this.checked) {
+            document.getElementById('custom_days').focus();
+        }
+    });
+    
+    document.getElementById('custom_days').addEventListener('focus', function() {
+        document.getElementById('custom').checked = true;
+    });
+    
+    // 日期格式化函数
+    function moment(timestamp) {
+        return new Date(timestamp * 1000);
+    }
+</script>
+{% endblock %}
