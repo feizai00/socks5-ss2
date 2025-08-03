@@ -702,7 +702,7 @@ def sync_service_to_db(port, service_data):
         db = get_db()
 
         # 检查服务是否已存在
-        existing = db.execute('SELECT id FROM services WHERE port = ?', (port,)).fetchone()
+        existing = db.execute('SELECT id FROM services WHERE port = ?', (str(port),)).fetchone()
 
         if existing:
             # 更新现有服务
@@ -721,7 +721,7 @@ def sync_service_to_db(port, service_data):
                 service_data.get('password', ''),
                 service_data.get('expires_at', 0),
                 service_data.get('status', 'stopped'),
-                port
+                str(port)
             ))
         else:
             # 创建新服务
@@ -732,7 +732,7 @@ def sync_service_to_db(port, service_data):
                     expires_at, status, created_by
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
-                port,
+                str(port),
                 service_data.get('node_name', ''),
                 service_data.get('socks_ip', ''),
                 service_data.get('socks_port', 0),
@@ -1303,10 +1303,10 @@ def api_delete_service(port):
             }), 403
 
         # 先停止服务
-        call_xray_script('stop_single_service', port)
+        call_xray_script('stop_single_service', str(port))
 
         # 移动服务文件到回收站目录而不是直接删除
-        service_dir = os.path.join(SERVICE_DIR, port)
+        service_dir = os.path.join(SERVICE_DIR, str(port))
         if os.path.exists(service_dir):
             recycle_dir = os.path.join(SERVICE_DIR, '.recycle')
             os.makedirs(recycle_dir, exist_ok=True)
@@ -1513,13 +1513,15 @@ def api_monitor_history():
         }), 500
 
 @app.route('/service/<port>')
+@app.route('/service/<int:port>')
 @login_required
 def service_detail(port):
     """服务详情页"""
     try:
         # 验证端口
-        if not port.isdigit():
-            flash('无效的端口号', 'error')
+        port, error = validate_port(port)
+        if error:
+            flash(error, 'error')
             return redirect(url_for('index'))
 
         # 从数据库获取服务信息
@@ -1529,7 +1531,7 @@ def service_detail(port):
             FROM services s
             LEFT JOIN users u ON s.created_by = u.id
             WHERE s.port = ?
-        ''', (port,)).fetchone()
+        ''', (str(port),)).fetchone()
 
         if not service:
             flash('服务不存在', 'error')
@@ -1539,7 +1541,7 @@ def service_detail(port):
         service_dict = dict(service)
 
         # 检查实际运行状态
-        pid_file = os.path.join(SERVICE_DIR, port, 'xray.pid')
+        pid_file = os.path.join(SERVICE_DIR, str(port), 'xray.pid')
         if os.path.exists(pid_file):
             try:
                 with open(pid_file, 'r') as f:
@@ -1583,13 +1585,15 @@ def service_detail(port):
 
 
 @app.route('/service/<port>/edit')
+@app.route('/service/<int:port>/edit')
 @login_required
 def edit_service(port):
     """编辑服务页"""
     try:
         # 验证端口
-        if not port.isdigit():
-            flash('无效的端口号', 'error')
+        port, error = validate_port(port)
+        if error:
+            flash(error, 'error')
             return redirect(url_for('index'))
 
         # 从数据库获取服务信息
@@ -1599,7 +1603,7 @@ def edit_service(port):
             FROM services s
             LEFT JOIN users u ON s.created_by = u.id
             WHERE s.port = ?
-        ''', (port,)).fetchone()
+        ''', (str(port),)).fetchone()
 
         if not service:
             flash('服务不存在', 'error')
@@ -1618,19 +1622,21 @@ def edit_service(port):
         return redirect(url_for('index'))
 
 @app.route('/service/<port>/update', methods=['POST'])
+@app.route('/service/<int:port>/update', methods=['POST'])
 @login_required
 def update_service(port):
     """更新服务"""
     try:
         # 验证端口
-        if not port.isdigit():
-            flash('无效的端口号', 'error')
+        port, error = validate_port(port)
+        if error:
+            flash(error, 'error')
             return redirect(url_for('index'))
 
         # 检查服务是否存在
         db = get_db()
         service = db.execute(
-            'SELECT * FROM services WHERE port = ?', (port,)
+            'SELECT * FROM services WHERE port = ?', (str(port),)
         ).fetchone()
 
         if not service:
@@ -1692,12 +1698,12 @@ def update_service(port):
         ''', (
             node_name, socks_ip, int(socks_port),
             socks_user, socks_pass, ss_password,
-            expires_at, port
+            expires_at, str(port)
         ))
         db.commit()
 
         # 更新配置文件
-        info_file = os.path.join(SERVICE_DIR, port, 'info')
+        info_file = os.path.join(SERVICE_DIR, str(port), 'info')
         if os.path.exists(info_file):
             # 读取现有信息
             info_data = {}
