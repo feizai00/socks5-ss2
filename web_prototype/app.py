@@ -20,6 +20,8 @@ from datetime import datetime, timedelta
 import hashlib
 import base64
 import urllib.parse
+import socket
+import subprocess
 
 # 配置日志
 logging.basicConfig(
@@ -663,6 +665,127 @@ def validate_port(port):
         
     return port, None
 
+def parse_ss_link(ss_link):
+    """解析SS链接"""
+    try:
+        if not ss_link.startswith('ss://'):
+            return None
+            
+        # 移除ss://前缀
+        encoded_part = ss_link[5:]
+        
+        # 分离URL参数
+        if '?' in encoded_part:
+            encoded_part, params = encoded_part.split('?', 1)
+        else:
+            params = ''
+            
+        # 分离服务器地址
+        if '@' in encoded_part:
+            auth_part, server_part = encoded_part.split('@', 1)
+        else:
+            return None
+            
+        # 解码认证信息
+        try:
+            auth_decoded = base64.b64decode(auth_part + '===').decode('utf-8')
+            if ':' in auth_decoded:
+                method, password = auth_decoded.split(':', 1)
+            else:
+                return None
+        except:
+            return None
+            
+        # 解析服务器地址和端口
+        if ':' in server_part:
+            server, port = server_part.rsplit(':', 1)
+            port = int(port)
+        else:
+            return None
+            
+        # 解析参数
+        node_name = ''
+        if params:
+            if '#' in params:
+                node_name = params.split('#', 1)[1]
+                
+        return {
+            'method': method,
+            'password': password,
+            'server': server,
+            'port': port,
+            'node_name': urllib.parse.unquote(node_name)
+        }
+    except Exception as e:
+        return None
+
+def test_ss_connection(server, port, timeout=10):
+    """测试SS服务器连接"""
+    try:
+        # 创建socket连接
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        
+        start_time = time.time()
+        result = sock.connect_ex((server, port))
+        end_time = time.time()
+        
+        sock.close()
+        
+        if result == 0:
+            return {
+                'success': True,
+                'latency': round((end_time - start_time) * 1000, 2),
+                'message': 'Connection successful'
+            }
+        else:
+            return {
+                'success': False,
+                'latency': -1,
+                'message': f'Connection failed (error code: {result})'
+            }
+    except socket.timeout:
+        return {
+            'success': False,
+            'latency': -1,
+            'message': 'Connection timeout'
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'latency': -1,
+            'message': f'Connection error: {str(e)}'
+        }
+
+def test_ss_link(ss_link, timeout=10):
+    """测试SS链接"""
+    result = {
+        'ss_link': ss_link,
+        'parsed': False,
+        'connection': False,
+        'details': {},
+        'error': None
+    }
+    
+    # 解析SS链接
+    parsed = parse_ss_link(ss_link)
+    if not parsed:
+        result['error'] = 'Invalid SS link format'
+        return result
+        
+    result['parsed'] = True
+    result['details'] = parsed
+    
+    # 测试连接
+    conn_result = test_ss_connection(parsed['server'], parsed['port'], timeout)
+    result['connection'] = conn_result['success']
+    result['details'].update({
+        'latency': conn_result['latency'],
+        'connection_message': conn_result['message']
+    })
+    
+    return result
+
 def call_xray_script(action, *args, timeout=60):
     """调用Xray脚本"""
     try:
@@ -1257,6 +1380,167 @@ def api_restart_service(port):
         return jsonify({
             'success': False,
             'error': '服务重启失败',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/services/<port>/test-ss', methods=['POST'])
+@app.route('/api/services/<int:port>/test-ss', methods=['POST'])
+@login_required
+def api_test_ss_link(port):
+    """API: 测试SS链接"""
+    try:
+        # 验证端口
+        port, error = validate_port(port)
+        if error:
+            return jsonify({
+                'success': False,
+                'error': error
+            }), 400
+
+        # 获取服务信息
+        services = get_services_from_filesystem()
+        service = None
+        for s in services:
+            if s['port'] == str(port):
+                service = s
+                break
+        
+        if not service:
+            return jsonify({
+                'success': False,
+                'error': '服务不存在'
+            }), 404
+            
+        # 检查是否有SS链接
+        ss_link = service.get('ss_link')
+        if not ss_link:
+            return jsonify({
+                'success': False,
+                'error': 'SS链接不存在'
+            }), 400
+            
+        # 测试SS链接
+        test_result = test_ss_link(ss_link, timeout=10)
+        
+        # 格式化结果
+        if test_result['connection']:
+            latency = test_result['details'].get('latency', -1)
+            message = f"连接成功，延迟: {latency}ms"
+            status = 'success'
+        else:
+            message = test_result['details'].get('connection_message', '连接失败')
+            if test_result['error']:
+                message = test_result['error']
+            status = 'error'
+            
+        # 记录操作日志
+        log_operation('test_ss_link', f'port_{port}', 
+                     f'测试SS链接: {service["node_name"]} - {message}')
+        
+        return jsonify({
+            'success': test_result['connection'],
+            'status': status,
+            'message': message,
+            'details': {
+                'server': test_result['details'].get('server', ''),
+                'port': test_result['details'].get('port', 0),
+                'latency': test_result['details'].get('latency', -1),
+                'parsed': test_result['parsed']
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"API测试SS链接失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'SS链接测试失败',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/test-ss-batch', methods=['POST'])
+@login_required
+def api_test_ss_batch():
+    """API: 批量测试SS链接"""
+    try:
+        data = request.get_json()
+        if not data or 'ports' not in data:
+            return jsonify({
+                'success': False,
+                'error': '缺少端口列表'
+            }), 400
+            
+        ports = data['ports']
+        if not isinstance(ports, list):
+            return jsonify({
+                'success': False,
+                'error': '端口列表格式错误'
+            }), 400
+            
+        # 获取所有服务
+        services = get_services_from_filesystem()
+        service_dict = {s['port']: s for s in services}
+        
+        results = []
+        for port in ports:
+            port_str = str(port)
+            if port_str not in service_dict:
+                results.append({
+                    'port': port,
+                    'success': False,
+                    'message': '服务不存在'
+                })
+                continue
+                
+            service = service_dict[port_str]
+            ss_link = service.get('ss_link')
+            if not ss_link:
+                results.append({
+                    'port': port,
+                    'success': False,
+                    'message': 'SS链接不存在'
+                })
+                continue
+                
+            # 测试链接
+            test_result = test_ss_link(ss_link, timeout=10)
+            
+            if test_result['connection']:
+                latency = test_result['details'].get('latency', -1)
+                message = f"连接成功，延迟: {latency}ms"
+            else:
+                message = test_result['details'].get('connection_message', '连接失败')
+                if test_result['error']:
+                    message = test_result['error']
+                    
+            results.append({
+                'port': port,
+                'node_name': service.get('node_name', f'服务{port}'),
+                'success': test_result['connection'],
+                'message': message,
+                'latency': test_result['details'].get('latency', -1),
+                'server': test_result['details'].get('server', ''),
+                'server_port': test_result['details'].get('port', 0)
+            })
+        
+        # 统计结果
+        success_count = sum(1 for r in results if r['success'])
+        total_count = len(results)
+        
+        return jsonify({
+            'success': True,
+            'results': results,
+            'summary': {
+                'total': total_count,
+                'success': success_count,
+                'failed': total_count - success_count
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"API批量测试SS链接失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': '批量测试失败',
             'message': str(e)
         }), 500
 
