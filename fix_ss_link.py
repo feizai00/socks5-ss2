@@ -53,19 +53,27 @@ def parse_ss_link(ss_link):
         
         # 解码认证信息
         try:
-            # 添加填充字符
-            padding = 4 - len(auth_part) % 4
-            if padding != 4:
-                auth_part += '=' * padding
-                
-            auth_decoded = base64.b64decode(auth_part).decode('utf-8')
+            # 尝试直接解码
+            try:
+                auth_decoded = base64.b64decode(auth_part).decode('utf-8')
+            except:
+                # 如果失败，添加填充字符再试
+                padding = 4 - len(auth_part) % 4
+                if padding != 4:
+                    auth_part += '=' * padding
+                auth_decoded = base64.b64decode(auth_part).decode('utf-8')
+            
+            print(f"🔍 解码后的认证信息: {auth_decoded}")
             
             if ':' not in auth_decoded:
+                print("❌ 认证信息中没有找到冒号分隔符")
                 return None
                 
             method, password = auth_decoded.split(':', 1)
+            print(f"🔍 加密方法: {method}")
+            print(f"🔍 密码: {password}")
         except Exception as e:
-            print(f"解码认证信息失败: {e}")
+            print(f"❌ 解码认证信息失败: {e}")
             return None
             
         # 解析服务器地址和端口
