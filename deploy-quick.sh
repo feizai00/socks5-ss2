@@ -80,7 +80,7 @@ get_user_input() {
     
     # GitHub仓库
     if [[ -z "${GITHUB_REPO}" ]]; then
-        read -p "$(echo -e ${BLUE}请输入GitHub仓库地址 (如: username/xray-converter): ${NC})" GITHUB_REPO
+        read -p "$(echo -e "${BLUE}请输入GitHub仓库地址 (如: username/xray-converter): ${NC}")" GITHUB_REPO
         if [[ -z "${GITHUB_REPO}" ]]; then
             log_error "GitHub仓库地址不能为空"
             exit 1
@@ -89,7 +89,7 @@ get_user_input() {
     
     # 服务器地址
     if [[ -z "${DEPLOY_HOST}" ]]; then
-        read -p "$(echo -e ${BLUE}请输入服务器IP或域名: ${NC})" DEPLOY_HOST
+        read -p "$(echo -e "${BLUE}请输入服务器IP或域名: ${NC}")" DEPLOY_HOST
         if [[ -z "${DEPLOY_HOST}" ]]; then
             log_error "服务器地址不能为空"
             exit 1
@@ -118,7 +118,7 @@ get_user_input() {
     echo "  服务端口: ${SERVICE_PORT}"
     echo ""
     
-    read -p "$(echo -e ${YELLOW}确认开始部署? [y/N]: ${NC})" confirm
+    read -p "$(echo -e "${YELLOW}确认开始部署? [y/N]: ${NC}")" confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         log_warn "部署已取消"
         exit 0
