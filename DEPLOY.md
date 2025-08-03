@@ -277,6 +277,24 @@ echo "net.ipv4.tcp_max_syn_backlog = 65535" >> /etc/sysctl.conf
 sysctl -p
 ```
 
+## 🚀 推送项目到GitHub
+
+### 方法1: 使用命令行推送
+
+```bash
+# 添加远程仓库
+git remote add origin https://github.com/你的用户名/仓库名.git
+
+# 推送代码
+git push -u origin main
+```
+
+### 方法2: 使用GitHub网页上传
+
+1. 在仓库页面点击 "uploading an existing file"
+2. 拖拽项目文件到页面
+3. 添加提交信息并提交
+
 ## 📞 技术支持
 
 如果遇到问题，可以通过以下方式获取帮助:

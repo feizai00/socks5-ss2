@@ -1,53 +1,57 @@
-# Xray SOCKS5 to Shadowsocks Converter
+# 🚀 Xray SOCKS5 to Shadowsocks Converter
 
-一个将SOCKS5代理转换为Shadowsocks的工具，提供Web管理界面和命令行操作。
+将SOCKS5代理转换为Shadowsocks服务，提供Web管理界面。
 
-## 功能特性
+## ✨ 核心功能
 
-- **SOCKS5转SS**: 将SOCKS5代理转换为Shadowsocks服务
-- **Web管理界面**: 友好的Web界面管理所有服务
-- **批量操作**: 支持批量添加、删除、重启服务
-- **状态监控**: 实时监控服务状态和连接情况
-- **自动化**: 自动下载Xray核心，自动配置生成
+- 🔄 **SOCKS5 → Shadowsocks** 协议转换
+- 🌐 **Web管理界面** (端口9090)
+- ⚡ **一键部署** 到服务器
+- 📊 **服务监控** 和批量管理
 
-## 快速开始
+## 🚀 快速开始
 
-### 命令行方式
-
+### 本地使用
 ```bash
-# 克隆项目
-git clone <项目地址>
-cd xray-converter
-
-# 运行脚本
+git clone https://github.com/feizai00/socks5-ss2.git
+cd socks5-ss2
 ./xray_converter_simple.sh
 ```
 
-### Web界面
-
+### 一键部署到服务器
 ```bash
-# 启动Web服务
-cd web_prototype
-python3 app.py
-
-# 访问 http://localhost:5000
+curl -sSL https://raw.githubusercontent.com/feizai00/socks5-ss2/main/deploy-quick.sh | bash
 ```
 
-## 主要文件
+### Web界面
+```bash
+cd web_prototype
+./quick_fix.sh  # 自动配置环境
+```
+访问: `http://你的IP:9090` (admin/admin123)
 
-- `xray_converter_simple.sh` - 主要的转换脚本
-- `web_prototype/app.py` - Web管理界面
-- `deploy.sh` - 一键部署脚本
-- `service_monitor.sh` - 服务监控脚本
-- `quick_diagnosis.sh` - 快速诊断脚本
-- `install_native.sh` - 原生安装脚本
+## 📁 项目结构
 
-## 安装要求
+```
+📦 socks5-ss2/
+├── 🚀 xray_converter_simple.sh  # 主转换脚本
+├── 📱 deploy-quick.sh           # 一键部署
+├── 🌐 web_prototype/           # Web管理界面
+├── 🛠️ quick_diagnosis.sh      # 系统诊断
+└── 📚 DEPLOY.md               # 详细部署指南
+```
 
-- Linux/macOS/Windows
-- Python 3.6+ (Web界面)
-- curl, unzip (自动下载依赖)
+## 📋 系统要求
 
-## License
+- **系统**: Linux/macOS/Windows
+- **Python**: 3.6+ (Web界面)
+- **依赖**: curl, unzip (自动安装)
+
+## 📖 详细文档
+
+- [部署指南](DEPLOY.md) - 完整部署说明
+- [使用手册](USAGE.md) - 功能介绍
+
+## 📄 许可证
 
 [Mozilla Public License Version 2.0](LICENSE)

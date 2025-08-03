@@ -299,8 +299,7 @@ def verify_user(username, password):
         password_hash = hashlib.sha256(password.encode()).hexdigest()
         if user['password_hash'] != password_hash:
             logger.warning(f"登录失败: 用户 '{username}' 密码错误")
-            logger.debug(f"输入密码哈希: {password_hash}")
-            logger.debug(f"存储密码哈希: {user['password_hash']}")
+            
             return False, "密码错误"
 
         logger.info(f"登录成功: 用户 '{username}'")
@@ -657,7 +656,7 @@ def call_xray_script(action, *args, timeout=60):
 
         logger.info(f"命令执行结果: 返回码={result.returncode}")
         if result.stdout:
-            logger.debug(f"标准输出: {result.stdout}")
+    
         if result.stderr:
             logger.warning(f"标准错误: {result.stderr}")
 
