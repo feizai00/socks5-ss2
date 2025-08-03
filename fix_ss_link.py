@@ -37,19 +37,26 @@ def parse_ss_link(ss_link):
             
         # 移除ss://前缀
         link_part = ss_link[5:]
+        print(f"🔍 链接部分: {link_part}")
         
         # 分离节点名称
         if '#' in link_part:
             link_part, node_name = link_part.split('#', 1)
             node_name = urllib.parse.unquote(node_name)
+            print(f"🔍 节点名称: {node_name}")
         else:
             node_name = ""
             
+        print(f"🔍 处理后的链接部分: {link_part}")
+            
         # 分离服务器地址
         if '@' not in link_part:
+            print("❌ 链接部分没有找到@分隔符")
             return None
             
         auth_part, server_part = link_part.split('@', 1)
+        print(f"🔍 认证部分: {auth_part}")
+        print(f"🔍 服务器部分: {server_part}")
         
         # 解码认证信息
         try:
@@ -103,7 +110,9 @@ def parse_ss_link(ss_link):
         }
         
     except Exception as e:
-        print(f"解析SS链接失败: {e}")
+        print(f"❌ 解析SS链接失败: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 def test_ss_connection(server, port, timeout=5):
