@@ -7,7 +7,12 @@ class Config:
     PARENT_DIR = os.path.dirname(BASE_DIR)
     
     # 数据和脚本路径
-    XRAY_BIN_PATH = os.path.join(PARENT_DIR, 'xray', 'xray')  # 假设 xray 二进制文件位置
+    # 优先检查根目录下的 xray，兼容旧结构 (xray/xray)
+    if os.path.isfile(os.path.join(PARENT_DIR, 'xray')):
+        XRAY_BIN_PATH = os.path.join(PARENT_DIR, 'xray')
+    else:
+        XRAY_BIN_PATH = os.path.join(PARENT_DIR, 'xray', 'xray')
+        
     GEOIP_PATH = os.path.join(PARENT_DIR, 'geoip.dat')
     GEOSITE_PATH = os.path.join(PARENT_DIR, 'geosite.dat')
     
