@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+
+{% block page_title %}监控{% endblock %}
+
+{% block content %}
+<!-- 实时状态 -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <div class="card-title">CPU使用率</div>
+                        <div class="h3" id="cpu-usage">25%</div>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-microchip fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <div class="card-title">内存使用率</div>
+                        <div class="h3" id="memory-usage">60%</div>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-memory fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <div class="card-title">网络连接</div>
+                        <div class="h3" id="connections">{{ services|length * 15 }}</div>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-network-wired fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <div class="card-title">运行时间</div>
+                        <div class="h3" id="uptime">2d 3h</div>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-clock fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 图表区域 -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-chart-line"></i>
+                    CPU & 内存使用率
+                </h6>
+            </div>
+            <div class="card-body">
+                <canvas id="systemChart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-chart-area"></i>
+                    网络流量
+                </h6>
+            </div>
+            <div class="card-body">
+                <canvas id="networkChart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 服务状态监控 -->
+<div class="card">
+    <div class="card-header">
+        <h6 class="mb-0">
+            <i class="fas fa-server"></i>
+            服务状态监控
+        </h6>
+    </div>
+    <div class="card-body">
+        {% if services %}
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>端口</th>
+                        <th>节点名称</th>
+                        <th>状态</th>
+                        <th>连接数</th>
+                        <th>流量 (MB)</th>
+                        <th>最后活动</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for service in services %}
+                    <tr>
+                        <td>{{ service.port }}</td>
+                        <td>{{ service.get('node_name', '未知') }}</td>
+                        <td>
+                            <span class="status-badge status-{{ service.status }}">
+                                {% if service.status == 'running' %}
+                                    运行中
+                                {% elif service.status == 'stopped' %}
+                                    已停止
+                                {% elif service.status == 'expired' %}
+                                    已过期
+                                {% else %}
+                                    未知
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            <span id="connections-{{ service.port }}">
+                                {% if service.status == 'running' %}
+                                    {{ range(5, 25) | random }}
+                                {% else %}
+                                    0
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            <span id="traffic-{{ service.port }}">
+                                {% if service.status == 'running' %}
+                                    {{ range(10, 500) | random }}
+                                {% else %}
+                                    0
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            <span id="activity-{{ service.port }}">
+                                {% if service.status == 'running' %}
+                                    {{ range(1, 60) | random }}秒前
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+            <h6 class="text-muted">暂无服务需要监控</h6>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    // 系统监控图表
+    const systemCtx = document.getElementById('systemChart').getContext('2d');
+    const systemChart = new Chart(systemCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'CPU使用率',
+                data: [],
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                tension: 0.1
+            }, {
+                label: '内存使用率',
+                data: [],
+                borderColor: 'rgb(255, 99, 132)',
+                backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: {
+                        callback: function(value) {
+                            return value + '%';
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // 网络流量图表
+    const networkCtx = document.getElementById('networkChart').getContext('2d');
+    const networkChart = new Chart(networkCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: '入站流量 (MB/s)',
+                data: [],
+                borderColor: 'rgb(54, 162, 235)',
+                backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                tension: 0.1
+            }, {
+                label: '出站流量 (MB/s)',
+                data: [],
+                borderColor: 'rgb(255, 206, 86)',
+                backgroundColor: 'rgba(255, 206, 86, 0.1)',
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    // 模拟数据更新
+    function updateCharts() {
+        const now = new Date();
+        const timeLabel = now.toLocaleTimeString();
+        
+        // 更新系统图表
+        systemChart.data.labels.push(timeLabel);
+        systemChart.data.datasets[0].data.push(Math.random() * 30 + 20); // CPU
+        systemChart.data.datasets[1].data.push(Math.random() * 20 + 50); // Memory
+        
+        // 保持最近20个数据点
+        if (systemChart.data.labels.length > 20) {
+            systemChart.data.labels.shift();
+            systemChart.data.datasets[0].data.shift();
+            systemChart.data.datasets[1].data.shift();
+        }
+        
+        systemChart.update('none');
+        
+        // 更新网络图表
+        networkChart.data.labels.push(timeLabel);
+        networkChart.data.datasets[0].data.push(Math.random() * 10 + 5); // 入站
+        networkChart.data.datasets[1].data.push(Math.random() * 8 + 3);  // 出站
+        
+        if (networkChart.data.labels.length > 20) {
+            networkChart.data.labels.shift();
+            networkChart.data.datasets[0].data.shift();
+            networkChart.data.datasets[1].data.shift();
+        }
+        
+        networkChart.update('none');
+        
+        // 更新状态卡片
+        document.getElementById('cpu-usage').textContent = Math.floor(Math.random() * 30 + 20) + '%';
+        document.getElementById('memory-usage').textContent = Math.floor(Math.random() * 20 + 50) + '%';
+        document.getElementById('connections').textContent = Math.floor(Math.random() * 50 + 100);
+    }
+
+    // 更新服务监控数据
+    function updateServiceMonitoring() {
+        const services = document.querySelectorAll('[id^="connections-"]');
+        services.forEach(element => {
+            const port = element.id.replace('connections-', '');
+            const statusElement = document.querySelector(`#status-${port}`);
+            
+            if (statusElement && statusElement.textContent.trim() === '运行中') {
+                // 更新连接数
+                element.textContent = Math.floor(Math.random() * 20 + 5);
+                
+                // 更新流量
+                const trafficElement = document.querySelector(`#traffic-${port}`);
+                if (trafficElement) {
+                    const currentTraffic = parseInt(trafficElement.textContent) || 0;
+                    trafficElement.textContent = currentTraffic + Math.floor(Math.random() * 10 + 1);
+                }
+                
+                // 更新最后活动时间
+                const activityElement = document.querySelector(`#activity-${port}`);
+                if (activityElement) {
+                    activityElement.textContent = Math.floor(Math.random() * 60) + '秒前';
+                }
+            }
+        });
+    }
+
+    // 初始化图表数据
+    for (let i = 0; i < 10; i++) {
+        updateCharts();
+    }
+
+    // 定时更新
+    setInterval(updateCharts, 3000);        // 每3秒更新图表
+    setInterval(updateServiceMonitoring, 5000); // 每5秒更新服务监控
+</script>
+{% endblock %}
