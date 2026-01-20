@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block page_title %}服务器管理{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <h5 class="mb-0">
+                    <i class="fas fa-server"></i>
+                    节点服务器
+                </h5>
+            </div>
+            <div class="col-md-6 text-end">
+                <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addServerModal">
+                    <i class="fas fa-plus"></i> 添加服务器
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if servers %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>名称</th>
+                        <th>IP地址</th>
+                        <th>SSH端口</th>
+                        <th>用户</th>
+                        <th>状态</th>
+                        <th>最后检查</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for server in servers %}
+                    <tr>
+                        <td>{{ server.id }}</td>
+                        <td>
+                            <strong>{{ server.name }}</strong>
+                        </td>
+                        <td>
+                            <span class="font-monospace">{{ server.ip }}</span>
+                        </td>
+                        <td>{{ server.ssh_port }}</td>
+                        <td>{{ server.username }}</td>
+                        <td>
+                            {% if server.status == 'active' %}
+                                <span class="badge bg-success">在线</span>
+                            {% elif server.status == 'error' %}
+                                <span class="badge bg-danger">离线</span>
+                            {% else %}
+                                <span class="badge bg-secondary">未知</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if server.last_check %}
+                                {{ moment(server.last_check).strftime('%m-%d %H:%M') }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            <button class="btn btn-outline-info btn-sm" onclick="testConnection({{ server.id }})" title="测试连接">
+                                <i class="fas fa-plug"></i>
+                            </button>
+                            <button class="btn btn-outline-danger btn-sm" onclick="deleteServer({{ server.id }})" title="删除">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-server fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">暂无服务器</h5>
+            <p class="text-muted">添加远程服务器以实现多节点部署和负载均衡</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 添加服务器模态框 -->
+<div class="modal fade" id="addServerModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('main.add_server') }}" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title">添加远程节点</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">节点名称</label>
+                        <input type="text" class="form-control" name="name" placeholder="例如: 美国节点2" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-8 mb-3">
+                            <label class="form-label">IP 地址</label>
+                            <input type="text" class="form-control" name="ip" placeholder="1.2.3.4" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">SSH 端口</label>
+                            <input type="number" class="form-control" name="ssh_port" value="22" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">SSH 用户名</label>
+                        <input type="text" class="form-control" name="username" value="root" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">SSH 密码</label>
+                        <input type="password" class="form-control" name="password" placeholder="目前仅支持密码认证">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">添加</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function testConnection(id) {
+    const btn = event.currentTarget;
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    btn.disabled = true;
+
+    fetch(`/servers/test/${id}`, {
+        method: 'POST'
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success) {
+            alert('连接成功！');
+            location.reload();
+        } else {
+            alert('连接失败: ' + data.message);
+        }
+    })
+    .finally(() => {
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+    });
+}
+
+function deleteServer(id) {
+    if(confirm('确定要删除这个服务器节点吗？')) {
+        fetch(`/servers/delete/${id}`, {
+            method: 'POST'
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.success) {
+                location.reload();
+            } else {
+                alert('删除失败: ' + data.message);
+            }
+        });
+    }
+}
+</script>
+{% endblock %}

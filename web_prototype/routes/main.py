@@ -140,6 +140,102 @@ def admin():
         flash('加载管理后台失败', 'error')
         return redirect(url_for('main.index'))
 
+@main_bp.route('/servers')
+@admin_required
+def servers():
+    """服务器管理页面"""
+    try:
+        db = get_db()
+        servers = db.execute('SELECT * FROM servers ORDER BY created_at DESC').fetchall()
+        return render_template('servers.html', servers=servers)
+    except Exception as e:
+        current_app.logger.error(f"加载服务器列表失败: {e}")
+        flash('加载服务器列表失败', 'error')
+        return redirect(url_for('main.index'))
+
+@main_bp.route('/servers/add', methods=['POST'])
+@admin_required
+def add_server():
+    """添加服务器"""
+    try:
+        name = request.form.get('name')
+        ip = request.form.get('ip')
+        ssh_port = request.form.get('ssh_port', 22)
+        username = request.form.get('username', 'root')
+        password = request.form.get('password')
+        
+        if not name or not ip:
+            flash('服务器名称和IP不能为空', 'error')
+            return redirect(url_for('main.servers'))
+            
+        # 简单的连通性测试 (可选)
+        # from ssh_manager import SSHManager
+        # ssh = SSHManager(ip, int(ssh_port), username, password)
+        # if not ssh.test_connection():
+        #     flash('SSH 连接测试失败，请检查信息', 'warning')
+        
+        db = get_db()
+        db.execute('''
+            INSERT INTO servers (name, ip, ssh_port, username, password)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (name, ip, ssh_port, username, password))
+        db.commit()
+        
+        flash('服务器添加成功', 'success')
+    except Exception as e:
+        flash(f'添加失败: {e}', 'error')
+        
+    return redirect(url_for('main.servers'))
+
+@main_bp.route('/servers/delete/<int:server_id>', methods=['POST'])
+@admin_required
+def delete_server(server_id):
+    """删除服务器"""
+    try:
+        db = get_db()
+        # 检查是否有服务正在使用该服务器
+        count = db.execute('SELECT COUNT(*) FROM services WHERE server_id = ? AND deleted_at IS NULL', (server_id,)).fetchone()[0]
+        if count > 0:
+            return jsonify({'success': False, 'message': f'无法删除：该服务器上有 {count} 个活跃服务'}), 400
+            
+        db.execute('DELETE FROM servers WHERE id = ?', (server_id,))
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@main_bp.route('/servers/test/<int:server_id>', methods=['POST'])
+@admin_required
+def test_server(server_id):
+    """测试服务器连接"""
+    try:
+        db = get_db()
+        server = db.execute('SELECT * FROM servers WHERE id = ?', (server_id,)).fetchone()
+        if not server:
+            return jsonify({'success': False, 'message': '服务器不存在'}), 404
+            
+        from ssh_manager import SSHManager
+        ssh = SSHManager(
+            server['ip'], 
+            server['ssh_port'], 
+            server['username'], 
+            server['password'], 
+            server['private_key']
+        )
+        
+        if ssh.test_connection():
+            # 更新最后检查时间
+            db.execute("UPDATE servers SET status = 'active', last_check = CURRENT_TIMESTAMP WHERE id = ?", (server_id,))
+            db.commit()
+            return jsonify({'success': True, 'message': '连接成功'})
+        else:
+            db.execute("UPDATE servers SET status = 'error', last_check = CURRENT_TIMESTAMP WHERE id = ?", (server_id,))
+            db.commit()
+            return jsonify({'success': False, 'message': '连接失败'})
+            
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @main_bp.route('/ip-pool')
 @admin_required
 def ip_pool():

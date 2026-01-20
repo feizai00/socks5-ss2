@@ -25,6 +25,22 @@ def init_db(app):
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
+        # 创建服务器节点表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS servers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                ip TEXT NOT NULL,
+                ssh_port INTEGER DEFAULT 22,
+                username TEXT DEFAULT 'root',
+                password TEXT, -- 如果使用密码认证
+                private_key TEXT, -- 如果使用密钥认证
+                status TEXT DEFAULT 'active', -- active, inactive, error
+                last_check TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         # 创建用户表
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
@@ -58,7 +74,9 @@ def init_db(app):
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 deleted_at TIMESTAMP DEFAULT NULL,
-                FOREIGN KEY (created_by) REFERENCES users (id)
+                server_id INTEGER DEFAULT NULL, -- 关联到 servers 表，NULL 表示本机
+                FOREIGN KEY (created_by) REFERENCES users (id),
+                FOREIGN KEY (server_id) REFERENCES servers (id)
             )
         ''')
 
