@@ -285,7 +285,54 @@
         document.getElementById('connections').textContent = totalConnections;
         document.getElementById('uptime').textContent = data.processes.uptime.uptime_formatted;
 
-        // 更新图表
+        // 如果有历史数据，使用历史数据渲染（仅在首次加载或数据为空时）
+        if (isFirstUpdate && data.history && data.history.length > 0) {
+            systemChart.data.labels = [];
+            systemChart.data.datasets[0].data = [];
+            systemChart.data.datasets[1].data = [];
+            networkChart.data.labels = [];
+            networkChart.data.datasets[0].data = [];
+            networkChart.data.datasets[1].data = [];
+
+            let prevNetIn = 0;
+            let prevNetOut = 0;
+
+            data.history.forEach((point, index) => {
+                const timeLabel = new Date(point.timestamp).toLocaleTimeString();
+                
+                // CPU & Memory
+                systemChart.data.labels.push(timeLabel);
+                systemChart.data.datasets[0].data.push(point.cpu_usage);
+                systemChart.data.datasets[1].data.push(point.memory_usage);
+
+                // Network (Diff calculation)
+                if (index > 0) {
+                    const diffIn = (point.network_in - prevNetIn) / 1024 / 1024 / 60; // MB/s (approx, since interval is 60s)
+                    const diffOut = (point.network_out - prevNetOut) / 1024 / 1024 / 60;
+                    
+                    networkChart.data.labels.push(timeLabel);
+                    networkChart.data.datasets[0].data.push(diffIn > 0 ? diffIn.toFixed(2) : 0);
+                    networkChart.data.datasets[1].data.push(diffOut > 0 ? diffOut.toFixed(2) : 0);
+                }
+                prevNetIn = point.network_in;
+                prevNetOut = point.network_out;
+            });
+            
+            systemChart.update();
+            networkChart.update();
+            isFirstUpdate = false;
+            
+            // Sync last network state
+            const lastPoint = data.history[data.history.length - 1];
+            lastNetwork = {
+                sent: lastPoint.network_out,
+                recv: lastPoint.network_in,
+                time: new Date(lastPoint.timestamp).getTime()
+            };
+            return; 
+        }
+
+        // 实时更新图表
         const now = new Date();
         const timeLabel = now.toLocaleTimeString();
 
@@ -305,7 +352,8 @@
         if (data.network && data.network.bytes_sent !== undefined) {
             const nowTime = Date.now();
             
-            if (!isFirstUpdate) {
+            // 如果不是第一次（或者已经从历史数据初始化过），计算差值
+            if (!isFirstUpdate || lastNetwork.time > 0) {
                 const timeDiff = (nowTime - lastNetwork.time) / 1000; // seconds
                 if (timeDiff > 0) {
                     const sentDiff = data.network.bytes_sent - lastNetwork.sent;
@@ -331,6 +379,7 @@
                     networkChart.update('none');
                 }
             } else {
+                // 第一次且没有历史数据，只记录状态不绘图
                 isFirstUpdate = false;
             }
             

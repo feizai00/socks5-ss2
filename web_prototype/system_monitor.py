@@ -10,6 +10,7 @@ import time
 import json
 import subprocess
 from datetime import datetime, timedelta
+from database import get_db
 
 class SystemMonitor:
     def __init__(self):
@@ -263,6 +264,11 @@ class SystemMonitor:
             
             if os.path.exists(data_dir):
                 for port_dir in os.listdir(data_dir):
+                    try:
+                        port = int(port_dir)
+                    except ValueError:
+                        continue
+
                     port_path = os.path.join(data_dir, port_dir)
                     if os.path.isdir(port_path):
                         pid_file = os.path.join(port_path, 'xray.pid')
@@ -289,7 +295,7 @@ class SystemMonitor:
                                 pass
                         
                         # 检查端口监听
-                        port_listening = self._check_port_listening(int(port_dir))
+                        port_listening = self._check_port_listening(port)
                         
                         # 获取连接数
                         connection_count = 0
@@ -303,7 +309,7 @@ class SystemMonitor:
                                 pass
 
                         services.append({
-                            'port': int(port_dir),
+                            'port': port,
                             'status': status,
                             'pid': pid,
                             'port_listening': port_listening,
@@ -315,6 +321,45 @@ class SystemMonitor:
             return services
         except Exception as e:
             return {'error': str(e)}
+
+    def save_stats_to_db(self, app):
+        """保存监控数据到数据库"""
+        with app.app_context():
+            try:
+                db = get_db()
+                
+                # 1. 保存系统整体状态
+                cpu_info = self.get_cpu_info()
+                mem_info = self.get_memory_info()
+                net_info = self.get_network_info()
+                services = self.get_xray_services_status()
+                
+                total_connections = sum(s.get('connections', 0) for s in services if isinstance(s, dict))
+                
+                # 插入历史记录
+                db.execute('''
+                    INSERT INTO system_stats_history 
+                    (cpu_usage, memory_usage, network_in, network_out, connections)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (
+                    cpu_info.get('usage', 0),
+                    mem_info.get('usage_percent', 0),
+                    net_info.get('bytes_recv', 0),
+                    net_info.get('bytes_sent', 0),
+                    total_connections
+                ))
+                
+                # 2. 清理旧数据 (保留最近7天)
+                # 假设每分钟记录一次，7天大约 10080 条记录
+                # 我们可以按时间清理
+                db.execute("DELETE FROM system_stats_history WHERE timestamp < datetime('now', '-7 days')")
+                
+                db.commit()
+                
+            except Exception as e:
+                # 在后台线程中打印错误可能看不到，但在 flask app context 中可以记录
+                pass
+
     
     def _check_port_listening(self, port):
         """检查端口是否在监听"""

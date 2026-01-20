@@ -317,6 +317,18 @@ def monitor_stats():
     """获取监控数据API"""
     try:
         status = monitor.get_system_status()
+        
+        # 补充历史数据用于前端图表
+        db = get_db()
+        history = db.execute('''
+            SELECT cpu_usage, memory_usage, network_in, network_out, timestamp 
+            FROM system_stats_history 
+            ORDER BY timestamp DESC LIMIT 20
+        ''').fetchall()
+        
+        # 将 row 对象转换为 dict 并反转顺序（按时间正序）
+        status['history'] = [dict(row) for row in history][::-1]
+        
         return jsonify(status)
     except Exception as e:
         return jsonify({'error': str(e)}), 500

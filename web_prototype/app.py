@@ -78,6 +78,22 @@ def create_app(test_config=None):
     # 启动系统监控
     monitor.start()
     
+    # 启动历史数据记录线程
+    import threading
+    import time
+    def history_recorder():
+        while True:
+            try:
+                time.sleep(60) # 每分钟记录一次
+                monitor.save_stats_to_db(app)
+            except Exception as e:
+                logger.error(f"历史数据记录异常: {e}")
+                time.sleep(60)
+                
+    history_thread = threading.Thread(target=history_recorder)
+    history_thread.daemon = True
+    history_thread.start()
+    
     # 启动自动故障修复监控
     healer = ServiceHealer(app)
     healer.start()

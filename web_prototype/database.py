@@ -103,6 +103,31 @@ def init_db(app):
             )
         ''')
 
+        # 创建系统监控历史表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS system_stats_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cpu_usage REAL,
+                memory_usage REAL,
+                network_in INTEGER, -- 累计入站流量 (bytes)
+                network_out INTEGER, -- 累计出站流量 (bytes)
+                connections INTEGER,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # 创建服务流量统计表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS service_traffic (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                service_port INTEGER,
+                traffic_in INTEGER DEFAULT 0, -- 累计入站流量 (bytes)
+                traffic_out INTEGER DEFAULT 0, -- 累计出站流量 (bytes)
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (service_port) REFERENCES services (port)
+            )
+        ''')
+
         # 创建 IP 备用池表
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS ip_pool (
