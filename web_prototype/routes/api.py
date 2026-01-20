@@ -86,7 +86,7 @@ def test_ss_link(port):
              return jsonify({'success': False, 'message': '服务不存在'}), 404
 
         ss_password = service['ss_password']
-        method = service.get('method', 'aes-256-gcm')
+        method = service['method'] if service['method'] else 'aes-256-gcm'
         if not method:
             method = 'aes-256-gcm'
 
@@ -124,7 +124,7 @@ def batch_test_ss_link():
             ).fetchone()
             
             if service:
-                method = service.get('method')
+                method = service['method']
                 if not method:
                     method = 'aes-256-gcm'
                     
