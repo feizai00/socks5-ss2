@@ -38,7 +38,14 @@ def create_app(test_config=None):
         def moment(timestamp=None):
             if timestamp is None:
                 return datetime.now()
-            return datetime.fromtimestamp(int(timestamp))
+            # 如果 timestamp 是 datetime 对象，直接返回
+            if isinstance(timestamp, datetime):
+                return timestamp
+            try:
+                return datetime.fromtimestamp(int(timestamp))
+            except (ValueError, TypeError):
+                # 如果转换失败，返回当前时间作为回退，避免崩溃
+                return datetime.now()
         return dict(moment=moment)
 
     # 加载配置
