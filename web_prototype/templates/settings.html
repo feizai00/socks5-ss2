@@ -22,6 +22,20 @@
 
                     <hr>
 
+                    <h6 class="mb-3 text-primary"><i class="fas fa-cloud"></i> Cloudflare 智能调度设置</h6>
+                    <div class="mb-3">
+                        <label class="form-label">API Token</label>
+                        <input type="text" class="form-control" name="cf_api_token" value="{{ settings.get('cf_api_token', '') }}" placeholder="Cloudflare API Token">
+                        <div class="form-text">具有 DNS 编辑权限的 API Token</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Zone ID</label>
+                        <input type="text" class="form-control" name="cf_zone_id" value="{{ settings.get('cf_zone_id', '') }}" placeholder="Zone ID">
+                        <div class="form-text">域名的 Zone ID</div>
+                    </div>
+
+                    <hr>
+
                     <h6 class="mb-3 text-primary"><i class="fab fa-telegram"></i> Telegram 通知设置</h6>
                     <div class="mb-3">
                         <label class="form-label">Bot Token</label>

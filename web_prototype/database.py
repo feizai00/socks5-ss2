@@ -35,6 +35,7 @@ def init_db(app):
                 username TEXT DEFAULT 'root',
                 password TEXT, -- 如果使用密码认证
                 private_key TEXT, -- 如果使用密钥认证
+                domain TEXT, -- 绑定的域名 (用于自动故障切换)
                 status TEXT DEFAULT 'active', -- active, inactive, error
                 last_check TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -187,6 +188,9 @@ def init_db(app):
             ('tg_bot_token', '', 'Telegram 机器人 Token'),
             ('tg_chat_id', '', 'Telegram 通知 Chat ID'),
             ('auto_heal_enabled', 'false', '是否开启自动故障修复'),
+            ('cf_api_token', '', 'Cloudflare API Token'),
+            ('cf_zone_id', '', 'Cloudflare Zone ID'),
+            ('cf_domain_prefix', 'node', '故障切换使用的域名前缀 (例如 node1, node2)'),
         ]
 
         for key, value, desc in default_settings:

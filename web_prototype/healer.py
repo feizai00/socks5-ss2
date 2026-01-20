@@ -7,6 +7,8 @@ from database import get_db, init_db, close_db
 from utils import SSLinkUtils
 from xray_manager import XrayManager
 from notification import NotificationManager
+from cloudflare_manager import CloudflareManager
+from ssh_manager import SSHManager
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +35,11 @@ class ServiceHealer:
         while self.running:
             try:
                 with self.app.app_context():
+                    # 1. 检查服务健康状况 (IP池轮换)
                     self._check_and_heal()
+                    
+                    # 2. 检查服务器健康状况 (故障迁移)
+                    self._check_servers_and_failover()
             except Exception as e:
                 logger.error(f"监控循环异常: {e}")
             
@@ -42,14 +48,75 @@ class ServiceHealer:
                 with self.app.app_context():
                     db = get_db()
                     setting = db.execute("SELECT value FROM system_settings WHERE key = 'monitor_interval'").fetchone()
-                    # 默认间隔，这里为了不频繁请求数据库，可以设置一个合理的最小值，比如 60秒
-                    # 但用户的需求是“每隔5分钟检测一下”
-                    # 注意：system_settings 里的 monitor_interval 原本是给前端监控用的，可能只有 30秒
-                    # 我们这里硬编码为 5分钟 或者从配置读取
-                    # 为了安全起见，我们使用 300秒
                     time.sleep(300) 
             except:
                 time.sleep(300)
+
+    def _check_servers_and_failover(self):
+        """检查服务器健康并执行故障迁移"""
+        db = get_db()
+        
+        # 检查是否开启
+        auto_heal = db.execute("SELECT value FROM system_settings WHERE key = 'auto_heal_enabled'").fetchone()
+        if not auto_heal or auto_heal['value'] != 'true':
+            return
+
+        # 获取 Cloudflare 配置
+        settings = db.execute("SELECT key, value FROM system_settings WHERE key IN ('cf_api_token', 'cf_zone_id')").fetchall()
+        cf_config = {row['key']: row['value'] for row in settings}
+        cf_manager = None
+        if cf_config.get('cf_api_token') and cf_config.get('cf_zone_id'):
+            cf_manager = CloudflareManager(cf_config['cf_api_token'], cf_config['cf_zone_id'])
+
+        # 获取所有活跃服务器
+        servers = db.execute("SELECT * FROM servers WHERE status != 'inactive'").fetchall()
+        
+        active_servers = []
+        failed_servers = []
+        
+        for server in servers:
+            # 排除本机
+            if server['ip'] in ['127.0.0.1', 'localhost']:
+                active_servers.append(server)
+                continue
+                
+            # 测试 SSH 连接
+            ssh = SSHManager(server['ip'], server['ssh_port'], server['username'], server['password'], server['private_key'])
+            if ssh.test_connection():
+                active_servers.append(server)
+                # 如果之前是 error，恢复为 active
+                if server['status'] == 'error':
+                    db.execute("UPDATE servers SET status = 'active', last_check = CURRENT_TIMESTAMP WHERE id = ?", (server['id'],))
+                    db.commit()
+                    NotificationManager.send_telegram_message(f"✅ **服务器恢复**\n服务器 `{server['name']}` ({server['ip']}) 已恢复连接。")
+            else:
+                # 连接失败
+                logger.warning(f"服务器 {server['name']} ({server['ip']}) 连接失败")
+                failed_servers.append(server)
+                if server['status'] == 'active':
+                    db.execute("UPDATE servers SET status = 'error', last_check = CURRENT_TIMESTAMP WHERE id = ?", (server['id'],))
+                    db.commit()
+                    NotificationManager.send_telegram_message(f"⚠️ **服务器故障**\n服务器 `{server['name']}` ({server['ip']}) 连接失败！")
+
+        # 故障迁移逻辑
+        if failed_servers and active_servers and cf_manager:
+            for failed in failed_servers:
+                if failed['domain']: # 只有绑定了域名的服务器才需要迁移
+                    # 寻找一个健康的替代服务器 (简单的策略：找负载最低的，或者随机一个)
+                    # 这里简单起见，取第一个健康的服务器
+                    target = active_servers[0]
+                    
+                    logger.info(f"正在执行故障迁移: {failed['name']} -> {target['name']}")
+                    
+                    # 更新 DNS
+                    if cf_manager.update_dns_record(failed['domain'], target['ip']):
+                        msg = (f"🔄 **自动故障迁移执行成功**\n"
+                               f"故障节点: `{failed['name']}`\n"
+                               f"接管节点: `{target['name']}`\n"
+                               f"域名 `{failed['domain']}` 已指向 IP `{target['ip']}`")
+                        NotificationManager.send_telegram_message(msg)
+                    else:
+                        NotificationManager.send_telegram_message(f"❌ **故障迁移失败**\n无法更新域名 `{failed['domain']}` 的 DNS 记录。")
 
     def _check_and_heal(self):
         """检查所有服务并修复故障"""

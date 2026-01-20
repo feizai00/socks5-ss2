@@ -160,6 +160,7 @@ def add_server():
     try:
         name = request.form.get('name')
         ip = request.form.get('ip')
+        domain = request.form.get('domain', '').strip()
         ssh_port = request.form.get('ssh_port', 22)
         username = request.form.get('username', 'root')
         password = request.form.get('password')
@@ -176,10 +177,27 @@ def add_server():
         
         db = get_db()
         db.execute('''
-            INSERT INTO servers (name, ip, ssh_port, username, password)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (name, ip, ssh_port, username, password))
+            INSERT INTO servers (name, ip, domain, ssh_port, username, password)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (name, ip, domain, ssh_port, username, password))
         db.commit()
+        
+        # 如果配置了域名和Cloudflare，尝试自动添加DNS记录
+        if domain:
+            try:
+                from cloudflare_manager import CloudflareManager
+                settings = db.execute("SELECT key, value FROM system_settings WHERE key IN ('cf_api_token', 'cf_zone_id')").fetchall()
+                settings_dict = {row['key']: row['value'] for row in settings}
+                
+                if settings_dict.get('cf_api_token') and settings_dict.get('cf_zone_id'):
+                    cf = CloudflareManager(settings_dict['cf_api_token'], settings_dict['cf_zone_id'])
+                    if cf.update_dns_record(domain, ip):
+                        flash(f'服务器添加成功，且 DNS 记录已更新 ({domain} -> {ip})', 'success')
+                    else:
+                        flash('服务器添加成功，但 DNS 更新失败，请检查 Cloudflare 设置', 'warning')
+                    return redirect(url_for('main.servers'))
+            except Exception as e:
+                current_app.logger.error(f"Cloudflare 操作失败: {e}")
         
         flash('服务器添加成功', 'success')
     except Exception as e:
@@ -203,6 +221,42 @@ def delete_server(server_id):
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
+
+@main_bp.route('/servers/update/<int:server_id>', methods=['POST'])
+@admin_required
+def update_server(server_id):
+    """更新服务器信息"""
+    try:
+        name = request.form.get('name')
+        ip = request.form.get('ip')
+        domain = request.form.get('domain', '').strip()
+        ssh_port = request.form.get('ssh_port')
+        
+        db = get_db()
+        db.execute('''
+            UPDATE servers 
+            SET name = ?, ip = ?, domain = ?, ssh_port = ?, last_check = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (name, ip, domain, ssh_port, server_id))
+        db.commit()
+        
+        # Cloudflare 同步
+        if domain:
+            try:
+                from cloudflare_manager import CloudflareManager
+                settings = db.execute("SELECT key, value FROM system_settings WHERE key IN ('cf_api_token', 'cf_zone_id')").fetchall()
+                settings_dict = {row['key']: row['value'] for row in settings}
+                
+                if settings_dict.get('cf_api_token') and settings_dict.get('cf_zone_id'):
+                    cf = CloudflareManager(settings_dict['cf_api_token'], settings_dict['cf_zone_id'])
+                    cf.update_dns_record(domain, ip)
+            except Exception as e:
+                current_app.logger.error(f"Cloudflare 更新失败: {e}")
+                
+        flash('服务器信息已更新', 'success')
+    except Exception as e:
+        flash(f'更新失败: {e}', 'error')
+    return redirect(url_for('main.servers'))
 
 @main_bp.route('/servers/test/<int:server_id>', methods=['POST'])
 @admin_required

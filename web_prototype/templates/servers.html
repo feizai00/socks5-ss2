@@ -27,6 +27,7 @@
                     <tr>
                         <th>ID</th>
                         <th>名称</th>
+                        <th>域名</th>
                         <th>IP地址</th>
                         <th>SSH端口</th>
                         <th>用户</th>
@@ -99,6 +100,11 @@
                     <div class="mb-3">
                         <label class="form-label">节点名称</label>
                         <input type="text" class="form-control" name="name" placeholder="例如: 美国节点2" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">绑定域名 (可选)</label>
+                        <input type="text" class="form-control" name="domain" placeholder="例如: hk.mysite.com">
+                        <div class="form-text">用于自动故障切换。当此节点故障时，DNS将自动更新。</div>
                     </div>
                     <div class="row">
                         <div class="col-md-8 mb-3">
