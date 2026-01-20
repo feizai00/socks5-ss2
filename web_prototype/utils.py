@@ -195,24 +195,48 @@ class SSLinkUtils:
             return None
     
     def test_connection(self, server, port, timeout=None):
-        """测试服务器连接，返回延迟(ms)"""
+        """测试服务器连接，通过代理访问 tiktok.com 返回延迟(ms)"""
         import time
+        import requests
+        
         if timeout is None:
-            timeout = self.timeout
+            timeout = 10  # 增加超时时间以适应实际网络请求
             
         try:
+            # 构造代理配置
+            # 使用 socks5h:// 协议让 DNS 解析也通过代理，防止 DNS 污染
+            proxy_url = f'socks5h://{server}:{port}'
+            proxies = {
+                'http': proxy_url,
+                'https': proxy_url
+            }
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+            
             start_time = time.time()
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(timeout)
-            result = sock.connect_ex((server, port))
-            sock.close()
+            
+            # 请求 tiktok.com
+            # verify=False 忽略 SSL 证书验证，专注于连通性测试
+            response = requests.get(
+                'https://www.tiktok.com', 
+                proxies=proxies, 
+                headers=headers, 
+                timeout=timeout,
+                verify=False
+            )
             
             end_time = time.time()
             
-            if result == 0:
+            # 只要能收到响应，就说明链路是通的
+            if response.status_code > 0:
                 latency = int((end_time - start_time) * 1000)
                 return latency
             else:
                 return -1
-        except Exception:
+                
+        except Exception as e:
+            # 记录详细错误以便调试
+            logger.debug(f"代理测试失败 {server}:{port} - {str(e)}")
             return -1
