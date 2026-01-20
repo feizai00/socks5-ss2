@@ -52,7 +52,7 @@ def delete_service_by_port(port):
         return jsonify({'success': True, 'message': '服务已删除'})
         
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @api_bp.route('/service/<int:service_id>/status')
 @login_required
@@ -100,7 +100,7 @@ def test_ss_link(port):
             return jsonify({'success': False, 'message': '服务无法连接目标网站'}), 500
             
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @api_bp.route('/test-ss-batch', methods=['POST'])
 @login_required

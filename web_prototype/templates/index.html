@@ -785,7 +785,7 @@
             if (data.success) {
                 showToast(`SS链接测试成功: ${data.message}`, 'success');
             } else {
-                showToast(`SS链接测试失败: ${data.message}`, 'error');
+                showToast(`SS链接测试失败: ${data.message || data.error || '未知错误'}`, 'error');
             }
         })
         .catch(error => {
