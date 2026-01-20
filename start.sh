@@ -38,5 +38,10 @@ $GUNICORN -w 4 -b 0.0.0.0:5000 "app:create_app()" \
     --access-logfile ../access.log \
     --error-logfile ../error.log
 
-echo "服务已在后台启动。"
-echo "查看日志: tail -f access.log"
+if [ $? -eq 0 ]; then
+    echo "服务已在后台启动。"
+    echo "查看日志: tail -f access.log"
+else
+    echo -e "\033[0;31m启动失败: gunicorn 进程无法启动\033[0m"
+    exit 1
+fi
