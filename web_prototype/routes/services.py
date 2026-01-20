@@ -404,9 +404,16 @@ def delete_service(service_id):
         db.commit()
         
         log_operation('delete_service', service['node_name'], f"删除服务 端口:{service['port']}")
+        
+        # 判断请求类型，如果是 AJAX 请求返回 JSON
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json:
+             return jsonify({'success': True, 'message': '服务已删除'})
+             
         flash('服务已删除', 'success')
     except Exception as e:
         current_app.logger.error(f"删除服务失败: {e}")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json:
+             return jsonify({'success': False, 'error': str(e)}), 500
         flash(f"删除服务失败: {e}", 'error')
         
     return redirect(url_for('main.index'))
