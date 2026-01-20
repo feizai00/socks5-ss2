@@ -311,15 +311,23 @@ def service_detail(service_id):
         flash('无权访问该服务', 'error')
         return redirect(url_for('main.index'))
     
+    # 获取服务器信息
+    db = get_db()
+    server_info = None
+    if service['server_id']:
+        server = db.execute('SELECT * FROM servers WHERE id = ?', (service['server_id'],)).fetchone()
+        if server:
+            server_info = dict(server)
+            
     # 获取运行状态
-    is_running, pid = XrayManager.is_running(service['port'])
+    manager = XrayManager.get_manager(server_info)
+    is_running, pid = manager.is_running(service['port'])
     
     # 如果数据库状态不一致，更新数据库
     db_status = service['status']
     actual_status = 'running' if is_running else 'stopped'
     
     if db_status != actual_status:
-        db = get_db()
         db.execute('UPDATE services SET status = ? WHERE id = ?', (actual_status, service_id))
         db.commit()
         service = dict(service)
@@ -336,16 +344,7 @@ def service_detail(service_id):
     
     # 读取日志
     logs = []
-    server_info = None
-    # 使用管理器读取日志
     try:
-        db = get_db()
-        if service['server_id']:
-            server = db.execute('SELECT * FROM servers WHERE id = ?', (service['server_id'],)).fetchone()
-            if server:
-                server_info = dict(server)
-        
-        manager = XrayManager.get_manager(server_info)
         logs_content = manager.get_log_content(service['port'])
         if logs_content:
             logs = [logs_content]
@@ -550,6 +549,7 @@ def delete_service(service_id):
         flash('服务已删除', 'success')
     except Exception as e:
         current_app.logger.error(f"删除服务失败: {e}")
+        # 即使是普通 POST 请求，如果是删除失败，也要防止返回 500 页面导致前端 JS 报错
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json:
              return jsonify({'success': False, 'error': str(e)}), 500
         flash(f"删除服务失败: {e}", 'error')

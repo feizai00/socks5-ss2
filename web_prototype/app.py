@@ -69,10 +69,19 @@ def create_app(test_config=None):
     # 注册错误处理
     @app.errorhandler(404)
     def page_not_found(e):
+        from flask import request, jsonify
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json:
+             return jsonify({'error': 'Not Found'}), 404
         return render_template('error.html', error="页面未找到 (404)"), 404
 
     @app.errorhandler(500)
     def internal_server_error(e):
+        from flask import request, jsonify
+        # 记录完整堆栈信息
+        import traceback
+        logger.error(f"Server Error: {e}\n{traceback.format_exc()}")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json:
+             return jsonify({'error': str(e), 'details': traceback.format_exc()}), 500
         return render_template('error.html', error="服务器内部错误 (500)"), 500
 
     # 启动系统监控

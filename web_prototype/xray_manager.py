@@ -185,6 +185,8 @@ class LocalXrayManager:
         """停止服务"""
         running, pid = self.is_running(port)
         if not running or not pid:
+            # 即使进程没运行，也要清理可能残留的 PID 文件
+            self._clean_pid_file(port)
             return True
 
         try:
@@ -196,12 +198,21 @@ class LocalXrayManager:
                 process.kill()
         except psutil.NoSuchProcess:
             pass
+        except Exception as e:
+            logger.error(f"停止服务进程失败: {e}")
         finally:
+            self._clean_pid_file(port)
+        
+        return True
+
+    def _clean_pid_file(self, port):
+        """清理 PID 文件，忽略错误"""
+        try:
             pid_file = self.get_pid_file(port)
             if os.path.exists(pid_file):
                 os.remove(pid_file)
-        
-        return True
+        except Exception as e:
+            logger.warning(f"清理 PID 文件失败 (Port {port}): {e}")
 
     def restart_service(self, port, service_data=None):
         """重启服务"""

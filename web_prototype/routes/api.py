@@ -23,22 +23,31 @@ def delete_service_by_port(port):
     """通过端口删除服务 (用于前端 API 调用)"""
     db = get_db()
     
-    # 查找服务 ID
-    service = db.execute(
-        'SELECT id, node_name, created_by FROM services WHERE port = ? AND deleted_at IS NULL', 
-        (port,)
-    ).fetchone()
-    
-    if not service:
-        return jsonify({'error': '服务不存在'}), 404
-        
-    # 权限检查
-    if session.get('role') != 'admin' and service['created_by'] != session['user_id']:
-        return jsonify({'error': '无权操作'}), 403
-        
     try:
+        # 查找服务 ID
+        service = db.execute(
+            'SELECT id, node_name, created_by, server_id FROM services WHERE port = ? AND deleted_at IS NULL', 
+            (str(port),) # 确保 port 是字符串或正确类型
+        ).fetchone()
+        
+        if not service:
+            return jsonify({'error': '服务不存在'}), 404
+            
+        # 权限检查
+        if session.get('role') != 'admin' and service['created_by'] != session['user_id']:
+            return jsonify({'error': '无权操作'}), 403
+            
+        # 获取服务器信息
+        server_info = None
+        if service['server_id']:
+            server = db.execute('SELECT * FROM servers WHERE id = ?', (service['server_id'],)).fetchone()
+            if server:
+                server_info = dict(server)
+        
+        manager = XrayManager.get_manager(server_info)
+        
         # 停止服务
-        XrayManager.stop_service(port)
+        manager.stop_service(int(port))
         
         # 软删除
         db.execute('''
@@ -52,6 +61,8 @@ def delete_service_by_port(port):
         return jsonify({'success': True, 'message': '服务已删除'})
         
     except Exception as e:
+        import traceback
+        current_app.logger.error(f"删除服务 {port} 失败: {e}\n{traceback.format_exc()}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @api_bp.route('/service/<int:service_id>/status')

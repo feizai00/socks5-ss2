@@ -8,7 +8,8 @@ logger = logging.getLogger(__name__)
 def get_db():
     """获取数据库连接"""
     if 'db' not in g:
-        g.db = sqlite3.connect(current_app.config['DB_PATH'])
+        # 设置 timeout 为 10 秒，防止 database is locked 错误
+        g.db = sqlite3.connect(current_app.config['DB_PATH'], timeout=10)
         g.db.row_factory = sqlite3.Row
     return g.db
 
@@ -22,8 +23,21 @@ def init_db(app):
     """初始化数据库"""
     with app.app_context():
         db_path = app.config['DB_PATH']
-        conn = sqlite3.connect(db_path)
+        # 同样设置 timeout
+        conn = sqlite3.connect(db_path, timeout=10)
         cursor = conn.cursor()
+
+        # 检查并迁移数据库 (确保 server_id 字段存在)
+        try:
+            cursor.execute("SELECT server_id FROM services LIMIT 1")
+        except sqlite3.OperationalError:
+            # server_id 列不存在，进行迁移
+            logger.info("正在迁移数据库: 添加 server_id 列到 services 表")
+            try:
+                cursor.execute("ALTER TABLE services ADD COLUMN server_id INTEGER DEFAULT NULL REFERENCES servers(id)")
+                conn.commit()
+            except Exception as e:
+                logger.error(f"数据库迁移失败: {e}")
 
         # 创建服务器节点表
         cursor.execute('''

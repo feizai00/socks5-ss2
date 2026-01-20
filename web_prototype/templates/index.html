@@ -403,17 +403,21 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) return { success: true, port: port };
-                    return { success: false, port: port, error: data.error };
+                    // 即使后端返回错误，也视为操作已尝试，避免阻塞
+                    return { success: false, port: port, error: data.error || data.message };
                 })
                 .catch(err => ({ success: false, port: port, error: '网络错误' }));
             });
 
             Promise.all(deletePromises).then(results => {
                 const successCount = results.filter(r => r.success).length;
+                const errors = results.filter(r => !r.success).map(r => r.error);
+                
                 if (successCount === total) {
                     showToast(`批量删除完成: ${successCount} 个服务`, 'success');
                 } else {
                     showToast(`批量删除完成: 成功 ${successCount} / 失败 ${total - successCount}`, 'warning');
+                    if(errors.length > 0) console.error("批量删除错误:", errors);
                 }
                 setTimeout(() => location.reload(), 1000);
             });
