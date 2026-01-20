@@ -13,7 +13,9 @@ fi
 if [ -f "./venv/bin/gunicorn" ]; then
     GUNICORN="./venv/bin/gunicorn"
 else
-    GUNICORN="gunicorn"
+    echo -e "\033[0;31m错误: 在虚拟环境中未找到 gunicorn。\033[0m"
+    echo "请重新运行 ./deploy.sh 修复安装。"
+    exit 1
 fi
 
 # 设置环境变量

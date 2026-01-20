@@ -51,19 +51,31 @@ if [ $? -ne 0 ]; then
         # 重试创建
         python3 -m venv venv
         if [ $? -ne 0 ]; then
-             echo -e "${RED}重试失败。请检查系统环境。${NC}"
-             exit 1
+             echo -e "${RED}python3-venv 创建失败，尝试使用 virtualenv...${NC}"
+             pip3 install virtualenv
+             virtualenv venv
+             if [ $? -ne 0 ]; then
+                 echo -e "${RED}虚拟环境创建彻底失败。请检查系统环境。${NC}"
+                 exit 1
+             fi
         fi
     else
-        exit 1
+        # 非 Debian/Ubuntu 系统，或者 apt 不可用
+        pip3 install virtualenv
+        virtualenv venv
+        if [ $? -ne 0 ]; then
+             echo -e "${RED}虚拟环境创建失败。${NC}"
+             exit 1
+        fi
     fi
 fi
 
 # 3. 安装依赖
 echo -e "${YELLOW}[3/5] 安装 Python 依赖...${NC}"
 # 显式使用虚拟环境的 pip，避免 source 不生效的问题
+# 增加 --ignore-installed 以解决 blinker 等系统包无法卸载的问题
 ./venv/bin/pip install --upgrade pip
-./venv/bin/pip install --no-cache-dir -r web_prototype/requirements.txt
+./venv/bin/pip install --no-cache-dir --ignore-installed -r web_prototype/requirements.txt
 if [ $? -ne 0 ]; then
     echo -e "${RED}依赖安装失败。${NC}"
     exit 1
