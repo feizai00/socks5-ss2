@@ -127,7 +127,7 @@
                             <label class="form-label text-muted">Shadowsocks 链接</label>
                             <div class="input-group">
                                 <input type="text" class="form-control font-monospace" id="ss_link" 
-                                       value="{{ service.get('ss_link', 'SS链接生成中...') }}" readonly>
+                                       value="{{ ss_link }}" readonly>
                                 <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('ss_link')">
                                     <i class="fas fa-copy"></i>
                                     复制
@@ -196,7 +196,7 @@
                 {% endif %}
                 <div class="mb-2">
                     <strong>有效期:</strong>
-                    {% if service.get('expires_at') == '0' %}
+                    {% if service.get('expires_at')|string == '0' %}
                         <div class="text-success">永久有效</div>
                     {% elif service.get('expires_at') %}
                         {% set expires_timestamp = service.expires_at | int %}

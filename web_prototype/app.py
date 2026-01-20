@@ -35,7 +35,11 @@ def create_app(test_config=None):
     # 注入全局模板变量/函数
     @app.context_processor
     def inject_utilities():
-        return dict(moment=datetime.fromtimestamp)
+        def moment(timestamp=None):
+            if timestamp is None:
+                return datetime.now()
+            return datetime.fromtimestamp(int(timestamp))
+        return dict(moment=moment)
 
     # 加载配置
     app.config.from_object(Config)
