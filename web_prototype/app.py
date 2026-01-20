@@ -92,4 +92,5 @@ def create_app(test_config=None):
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # 生产环境关闭 debug 模式，防止报错信息直接暴露，而是显示友好的 500 页面
+    app.run(host='0.0.0.0', port=5000, debug=False)
