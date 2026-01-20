@@ -137,7 +137,15 @@ class ServiceHealer:
             updated_service = db.execute("SELECT * FROM services WHERE id = ?", (service['id'],)).fetchone()
             service_data = dict(updated_service) # 转换为字典
             
-            XrayManager.restart_service(port, service_data)
+            # 获取服务器信息
+            server_info = None
+            if updated_service['server_id']:
+                server = db.execute("SELECT * FROM servers WHERE id = ?", (updated_service['server_id'],)).fetchone()
+                if server:
+                    server_info = dict(server)
+            
+            manager = XrayManager.get_manager(server_info)
+            manager.restart_service(port, service_data)
             logger.info(f"服务 {port} 已切换到新 IP: {new_ip}")
             
             # 5. 发送通知

@@ -177,6 +177,17 @@
                             <input type="hidden" name="mode" value="quick">
                             
                             <div class="mb-4">
+                                <label for="quick_server_id" class="form-label">部署服务器</label>
+                                <select class="form-select" id="quick_server_id" name="server_id">
+                                    <option value="">本机 (Local)</option>
+                                    {% for server in servers %}
+                                    <option value="{{ server.id }}">{{ server.name }} ({{ server.ip }})</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">批量添加的服务将部署到选定的服务器</div>
+                            </div>
+
+                            <div class="mb-4">
                                 <label for="quick_input" class="form-label">配置字符串</label>
                                 <textarea class="form-control font-monospace" id="quick_input" name="quick_input" 
                                           rows="5" required placeholder="节点名称:IP:端口:用户名:密码:有效期设置"></textarea>

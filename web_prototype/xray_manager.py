@@ -5,10 +5,24 @@ import psutil
 import logging
 import signal
 from config import Config
+from ssh_manager import SSHManager
 
 logger = logging.getLogger(__name__)
 
 class XrayManager:
+    """Xray 管理基类/工厂类"""
+    
+    @staticmethod
+    def get_manager(server_info=None):
+        """
+        工厂方法：根据服务器信息返回对应的管理器实例
+        server_info: dict, 包含 ip, ssh_port, username, password, private_key
+        如果 server_info 为 None，则返回本地管理器
+        """
+        if server_info and server_info.get('ip') and server_info.get('ip') not in ['127.0.0.1', 'localhost']:
+            return RemoteXrayManager(server_info)
+        return LocalXrayManager()
+
     @staticmethod
     def generate_config(service_data):
         """生成 Xray 配置字典"""
@@ -79,8 +93,10 @@ class XrayManager:
         }
         return config
 
-    @staticmethod
-    def save_config(port, config):
+class LocalXrayManager:
+    """本地 Xray 管理器"""
+    
+    def save_config(self, port, config):
         """保存配置文件"""
         service_dir = os.path.join(Config.SERVICE_DIR, str(port))
         os.makedirs(service_dir, exist_ok=True)
@@ -90,18 +106,15 @@ class XrayManager:
             json.dump(config, f, indent=4, ensure_ascii=False)
         return config_path
 
-    @staticmethod
-    def get_pid_file(port):
+    def get_pid_file(self, port):
         return os.path.join(Config.SERVICE_DIR, str(port), 'xray.pid')
 
-    @staticmethod
-    def get_log_file(port):
+    def get_log_file(self, port):
         return os.path.join(Config.SERVICE_DIR, str(port), 'xray.log')
 
-    @staticmethod
-    def is_running(port):
+    def is_running(self, port):
         """检查服务是否运行"""
-        pid_file = XrayManager.get_pid_file(port)
+        pid_file = self.get_pid_file(port)
         if not os.path.exists(pid_file):
             return False, None
         
@@ -123,19 +136,18 @@ class XrayManager:
         except (ValueError, IOError):
             return False, None
 
-    @staticmethod
-    def start_service(port, service_data=None):
+    def start_service(self, port, service_data=None):
         """启动服务"""
         # 如果提供了数据，先生成配置
         if service_data:
             config = XrayManager.generate_config(service_data)
-            XrayManager.save_config(port, config)
+            self.save_config(port, config)
         
         config_path = os.path.join(Config.SERVICE_DIR, str(port), 'config.json')
         if not os.path.exists(config_path):
             raise FileNotFoundError(f"Config file not found for port {port}")
 
-        running, _ = XrayManager.is_running(port)
+        running, _ = self.is_running(port)
         if running:
             return True
 
@@ -145,8 +157,8 @@ class XrayManager:
                  # 如果是被占用了，抛出异常
                 raise OSError(f"Port {port} is already in use")
 
-        log_file = XrayManager.get_log_file(port)
-        pid_file = XrayManager.get_pid_file(port)
+        log_file = self.get_log_file(port)
+        pid_file = self.get_pid_file(port)
 
         # 轮换日志
         if os.path.exists(log_file) and os.path.getsize(log_file) > 10 * 1024 * 1024:
@@ -169,10 +181,9 @@ class XrayManager:
             
         return True
 
-    @staticmethod
-    def stop_service(port):
+    def stop_service(self, port):
         """停止服务"""
-        running, pid = XrayManager.is_running(port)
+        running, pid = self.is_running(port)
         if not running or not pid:
             return True
 
@@ -186,14 +197,181 @@ class XrayManager:
         except psutil.NoSuchProcess:
             pass
         finally:
-            pid_file = XrayManager.get_pid_file(port)
+            pid_file = self.get_pid_file(port)
             if os.path.exists(pid_file):
                 os.remove(pid_file)
         
         return True
 
-    @staticmethod
-    def restart_service(port, service_data=None):
+    def restart_service(self, port, service_data=None):
         """重启服务"""
-        XrayManager.stop_service(port)
-        return XrayManager.start_service(port, service_data)
+        self.stop_service(port)
+        return self.start_service(port, service_data)
+
+    def update_config(self, port, service_data):
+        """更新配置但不启动"""
+        config = XrayManager.generate_config(service_data)
+        self.save_config(port, config)
+
+    def get_log_content(self, port, lines=100):
+        """获取日志内容"""
+        log_file = self.get_log_file(port)
+        if not os.path.exists(log_file):
+            return ""
+        try:
+            with open(log_file, 'r') as f:
+                # 简单实现，读取最后N行
+                return ''.join(f.readlines()[-lines:])
+        except Exception:
+            return "无法读取日志"
+
+
+class RemoteXrayManager:
+    """远程 Xray 管理器 (SSH)"""
+    
+    def __init__(self, server_info):
+        self.ssh = SSHManager(
+            server_info['ip'],
+            server_info.get('ssh_port', 22),
+            server_info.get('username', 'root'),
+            server_info.get('password'),
+            server_info.get('private_key')
+        )
+        self.remote_dir = "/usr/local/xray_services" # 远程工作目录
+        self.xray_bin = "/usr/local/bin/xray" # 远程 xray 路径
+
+    def _ensure_remote_env(self):
+        """确保远程环境准备就绪"""
+        # 创建目录
+        self.ssh.exec_command(f"mkdir -p {self.remote_dir}")
+        
+        # 检查 xray 是否存在
+        stdout, _ = self.ssh.exec_command(f"command -v xray")
+        if not stdout:
+            # 尝试下载 xray (简化版，仅支持 amd64)
+            # 实际生产环境应根据架构下载，或者从主控端上传
+            install_cmd = "bash -c \"$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)\" @ install"
+            self.ssh.exec_command(install_cmd)
+            self.xray_bin = "/usr/local/bin/xray" # 默认安装路径
+        else:
+            self.xray_bin = stdout.strip()
+
+    def start_service(self, port, service_data=None):
+        """远程启动服务"""
+        if not self.ssh.connect():
+            raise ConnectionError("SSH Connection failed")
+            
+        try:
+            self._ensure_remote_env()
+            
+            service_dir = f"{self.remote_dir}/{port}"
+            self.ssh.exec_command(f"mkdir -p {service_dir}")
+            
+            # 生成配置并上传
+            if service_data:
+                config = XrayManager.generate_config(service_data)
+                # 写入本地临时文件
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', delete=False) as tmp:
+                    json.dump(config, tmp, indent=4)
+                    tmp_path = tmp.name
+                
+                # 上传到远程
+                self.ssh.upload_file(tmp_path, f"{service_dir}/config.json")
+                os.remove(tmp_path)
+            
+            # 启动命令
+            # 使用 nohup 后台运行，并记录 PID
+            cmd = f"nohup {self.xray_bin} run -config {service_dir}/config.json > {service_dir}/xray.log 2>&1 & echo $!"
+            stdout, stderr = self.ssh.exec_command(cmd)
+            
+            if stdout and stdout.isdigit():
+                pid = stdout.strip()
+                # 保存 PID 到远程文件
+                self.ssh.exec_command(f"echo {pid} > {service_dir}/xray.pid")
+                return True
+            else:
+                raise Exception(f"Start failed: {stderr}")
+                
+        finally:
+            self.ssh.close()
+
+    def stop_service(self, port):
+        """远程停止服务"""
+        if not self.ssh.connect():
+            raise ConnectionError("SSH Connection failed")
+            
+        try:
+            service_dir = f"{self.remote_dir}/{port}"
+            pid_file = f"{service_dir}/xray.pid"
+            
+            # 读取 PID
+            stdout, _ = self.ssh.exec_command(f"cat {pid_file}")
+            if stdout and stdout.strip().isdigit():
+                pid = stdout.strip()
+                self.ssh.exec_command(f"kill {pid}")
+                # 清理 PID 文件
+                self.ssh.exec_command(f"rm {pid_file}")
+            return True
+        finally:
+            self.ssh.close()
+
+    def restart_service(self, port, service_data=None):
+        self.stop_service(port)
+        return self.start_service(port, service_data)
+
+    def update_config(self, port, service_data):
+        """更新配置但不启动"""
+        if not self.ssh.connect():
+            raise ConnectionError("SSH Connection failed")
+            
+        try:
+            self._ensure_remote_env()
+            service_dir = f"{self.remote_dir}/{port}"
+            self.ssh.exec_command(f"mkdir -p {service_dir}")
+            
+            # 生成配置并上传
+            config = XrayManager.generate_config(service_data)
+            # 写入本地临时文件
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', delete=False) as tmp:
+                json.dump(config, tmp, indent=4)
+                tmp_path = tmp.name
+            
+            # 上传到远程
+            self.ssh.upload_file(tmp_path, f"{service_dir}/config.json")
+            os.remove(tmp_path)
+        finally:
+            self.ssh.close()
+
+    def is_running(self, port):
+        """检查远程服务状态"""
+        if not self.ssh.connect():
+            return False, None
+            
+        try:
+            service_dir = f"{self.remote_dir}/{port}"
+            pid_file = f"{service_dir}/xray.pid"
+            
+            stdout, _ = self.ssh.exec_command(f"cat {pid_file}")
+            if stdout and stdout.strip().isdigit():
+                pid = stdout.strip()
+                # 检查进程是否存在
+                check_cmd = f"ps -p {pid} > /dev/null && echo 'running'"
+                status, _ = self.ssh.exec_command(check_cmd)
+                if status == 'running':
+                    return True, int(pid)
+            return False, None
+        finally:
+            self.ssh.close()
+
+    def get_log_content(self, port, lines=100):
+        if not self.ssh.connect():
+            return "SSH Connection failed"
+        try:
+            service_dir = f"{self.remote_dir}/{port}"
+            log_file = f"{service_dir}/xray.log"
+            stdout, _ = self.ssh.exec_command(f"tail -n {lines} {log_file}")
+            return stdout
+        finally:
+            self.ssh.close()

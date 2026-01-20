@@ -43,8 +43,30 @@ import time
 @login_required
 def add_service():
     """添加新服务"""
+    db = get_db()
+    
+    # 获取可用服务器列表
+    servers = db.execute('SELECT * FROM servers WHERE status = "active"').fetchall()
+    
     if request.method == 'POST':
         mode = request.form.get('mode', 'manual')
+        
+        # 获取选择的服务器ID
+        server_id = request.form.get('server_id')
+        if server_id and server_id.strip() == '':
+            server_id = None
+        
+        server_info = None
+        if server_id:
+            server = db.execute('SELECT * FROM servers WHERE id = ?', (server_id,)).fetchone()
+            if server:
+                server_info = dict(server)
+            else:
+                # 如果指定的服务器不存在，回退到本地
+                server_id = None
+
+        # 获取管理器实例
+        manager = XrayManager.get_manager(server_info)
         
         # 公共数据
         data = {
@@ -56,7 +78,8 @@ def add_service():
             'socks_port': '',
             'socks_user': '',
             'socks_pass': '',
-            'expires_at': 0
+            'expires_at': 0,
+            'server_id': server_id
         }
         
         try:
@@ -132,18 +155,18 @@ def add_service():
                         cursor = db.execute('''
                             INSERT INTO services (
                                 port, node_name, socks_ip, socks_port, socks_user, socks_pass,
-                                ss_password, method, status, created_by, expires_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ss_password, method, status, created_by, expires_at, server_id
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (
                             service_data['port'], service_data['node_name'], service_data['socks_ip'], service_data['socks_port'],
                             service_data['socks_user'], service_data['socks_pass'], service_data['ss_password'], 
-                            service_data['method'], 'stopped', session['user_id'], service_data['expires_at']
+                            service_data['method'], 'stopped', session['user_id'], service_data['expires_at'], server_id
                         ))
                         db.commit()
                         service_id = cursor.lastrowid
                         
                         # 自动启动服务
-                        XrayManager.start_service(int(service_data['port']), service_data)
+                        manager.start_service(int(service_data['port']), service_data)
                         
                         # 更新状态
                         db.execute(
@@ -152,7 +175,7 @@ def add_service():
                         )
                         db.commit()
                         
-                        log_operation('create_service', service_data['node_name'], f"创建服务 端口:{service_data['port']}")
+                        log_operation('create_service', service_data['node_name'], f"创建服务 端口:{service_data['port']} (Server: {server_id or 'Local'})")
                         success_count += 1
                         
                     except Exception as line_e:
@@ -225,19 +248,19 @@ def add_service():
             cursor = db.execute('''
                 INSERT INTO services (
                     port, node_name, socks_ip, socks_port, socks_user, socks_pass,
-                    ss_password, method, status, created_by, expires_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ss_password, method, status, created_by, expires_at, server_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 data['port'], data['node_name'], data['socks_ip'], data['socks_port'],
                 data['socks_user'], data['socks_pass'], data['ss_password'], 
-                data['method'], 'stopped', session['user_id'], data['expires_at']
+                data['method'], 'stopped', session['user_id'], data['expires_at'], server_id
             ))
             db.commit()
             service_id = cursor.lastrowid
             
             # 自动启动服务
             try:
-                XrayManager.start_service(int(data['port']), data)
+                manager.start_service(int(data['port']), data)
                 
                 # 更新状态
                 db.execute(
@@ -251,7 +274,7 @@ def add_service():
                 current_app.logger.error(f"启动服务失败: {e}")
                 flash(f"服务创建成功但启动失败: {e}", 'warning')
             
-            log_operation('create_service', data['node_name'], f"创建服务 端口:{data['port']}")
+            log_operation('create_service', data['node_name'], f"创建服务 端口:{data['port']} (Server: {server_id or 'Local'})")
             
             # 生成SS链接并存入flash消息，以便在重定向后使用（可选，目前直接重定向到列表）
             # 或者重定向到详情页，这样用户可以直接看到生成的链接
@@ -259,11 +282,11 @@ def add_service():
             
         except ValueError as e:
             flash(str(e), 'error')
-            return render_template('add_service.html', data=data)
+            return render_template('add_service.html', data=data, servers=servers)
         except Exception as e:
             current_app.logger.error(f"创建服务失败: {e}")
             flash(f"创建服务失败: {e}", 'error')
-            return render_template('add_service.html', data=data)
+            return render_template('add_service.html', data=data, servers=servers)
 
     # 生成默认值
     default_data = {
@@ -272,7 +295,7 @@ def add_service():
         'method': 'aes-256-gcm'
     }
     
-    return render_template('add_service.html', data=default_data)
+    return render_template('add_service.html', data=default_data, servers=servers)
 
 @services_bp.route('/service/<int:service_id>')
 @login_required
@@ -313,21 +336,30 @@ def service_detail(service_id):
     
     # 读取日志
     logs = []
-    log_file = XrayManager.get_log_file(service['port'])
-    if os.path.exists(log_file):
-        try:
-            # 读取最后 100 行
-            with open(log_file, 'r') as f:
-                lines = f.readlines()
-                logs = lines[-100:]
-        except Exception as e:
-            current_app.logger.error(f"读取日志失败: {e}")
-            logs = [f"读取日志失败: {e}"]
+    server_info = None
+    # 使用管理器读取日志
+    try:
+        db = get_db()
+        if service['server_id']:
+            server = db.execute('SELECT * FROM servers WHERE id = ?', (service['server_id'],)).fetchone()
+            if server:
+                server_info = dict(server)
+        
+        manager = XrayManager.get_manager(server_info)
+        logs_content = manager.get_log_content(service['port'])
+        if logs_content:
+            logs = [logs_content]
+    except Exception as e:
+        current_app.logger.error(f"读取日志失败: {e}")
+        logs = [f"读取日志失败: {e}"]
             
+    host_ip = request.host.split(':')[0]
     return render_template('service_detail.html', 
                          service=service, 
-                         ss_link=ss_link,
-                         logs=''.join(logs))
+                         ss_link=ss_link, 
+                         logs=''.join(logs),
+                         host_ip=host_ip,
+                         server_info=server_info)
 
 @services_bp.route('/service/<int:service_id>/edit', methods=['GET', 'POST'])
 @login_required
@@ -400,9 +432,16 @@ def start_service_route(service_id):
         return jsonify({'error': '无权访问'}), 403
         
     try:
-        XrayManager.start_service(service['port'], dict(service))
-        
         db = get_db()
+        server_info = None
+        if service['server_id']:
+            server = db.execute('SELECT * FROM servers WHERE id = ?', (service['server_id'],)).fetchone()
+            if server:
+                server_info = dict(server)
+        
+        manager = XrayManager.get_manager(server_info)
+        manager.start_service(service['port'], dict(service))
+        
         db.execute('UPDATE services SET status = ? WHERE id = ?', ('running', service_id))
         db.commit()
         
@@ -423,9 +462,16 @@ def stop_service_route(service_id):
         return jsonify({'error': '无权访问'}), 403
         
     try:
-        XrayManager.stop_service(service['port'])
-        
         db = get_db()
+        server_info = None
+        if service['server_id']:
+            server = db.execute('SELECT * FROM servers WHERE id = ?', (service['server_id'],)).fetchone()
+            if server:
+                server_info = dict(server)
+        
+        manager = XrayManager.get_manager(server_info)
+        manager.stop_service(service['port'])
+        
         db.execute('UPDATE services SET status = ? WHERE id = ?', ('stopped', service_id))
         db.commit()
         
@@ -446,9 +492,16 @@ def restart_service_route(service_id):
         return jsonify({'error': '无权访问'}), 403
         
     try:
-        XrayManager.restart_service(service['port'], dict(service))
-        
         db = get_db()
+        server_info = None
+        if service['server_id']:
+            server = db.execute('SELECT * FROM servers WHERE id = ?', (service['server_id'],)).fetchone()
+            if server:
+                server_info = dict(server)
+        
+        manager = XrayManager.get_manager(server_info)
+        manager.restart_service(service['port'], dict(service))
+        
         db.execute('UPDATE services SET status = ? WHERE id = ?', ('running', service_id))
         db.commit()
         
@@ -469,11 +522,18 @@ def delete_service(service_id):
         return jsonify({'error': '无权访问'}), 403
         
     try:
+        db = get_db()
+        server_info = None
+        if service['server_id']:
+            server = db.execute('SELECT * FROM servers WHERE id = ?', (service['server_id'],)).fetchone()
+            if server:
+                server_info = dict(server)
+        
+        manager = XrayManager.get_manager(server_info)
         # 停止服务
-        XrayManager.stop_service(service['port'])
+        manager.stop_service(service['port'])
         
         # 软删除
-        db = get_db()
         db.execute('''
             UPDATE services 
             SET deleted_at = CURRENT_TIMESTAMP, status = 'stopped' 
