@@ -103,6 +103,20 @@ def init_db(app):
             )
         ''')
 
+        # 创建 IP 备用池表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ip_pool (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                socks_ip TEXT NOT NULL,
+                socks_port INTEGER NOT NULL,
+                socks_user TEXT,
+                socks_pass TEXT,
+                status TEXT DEFAULT 'available', -- available, used, bad
+                last_checked_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         # 创建索引
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_services_port ON services (port)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_services_status ON services (status)')
@@ -127,6 +141,9 @@ def init_db(app):
             ('enable_registration', 'false', '是否允许用户注册'),
             ('monitor_interval', '30', '监控检查间隔(秒)'),
             ('log_retention_days', '30', '日志保留天数'),
+            ('tg_bot_token', '', 'Telegram 机器人 Token'),
+            ('tg_chat_id', '', 'Telegram 通知 Chat ID'),
+            ('auto_heal_enabled', 'false', '是否开启自动故障修复'),
         ]
 
         for key, value, desc in default_settings:

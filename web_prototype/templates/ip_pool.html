@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block page_title %}IP 备用池{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <h5 class="mb-0">
+                    <i class="fas fa-layer-group"></i>
+                    SOCKS5 备用池
+                </h5>
+            </div>
+            <div class="col-md-6 text-end">
+                <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addIPModal">
+                    <i class="fas fa-plus"></i> 添加 IP
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if ips %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>IP地址</th>
+                        <th>端口</th>
+                        <th>用户名/密码</th>
+                        <th>状态</th>
+                        <th>添加时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ip in ips %}
+                    <tr>
+                        <td>{{ ip.id }}</td>
+                        <td>{{ ip.socks_ip }}</td>
+                        <td>{{ ip.socks_port }}</td>
+                        <td>
+                            {% if ip.socks_user %}
+                                {{ ip.socks_user }}:***
+                            {% else %}
+                                <span class="text-muted">无</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if ip.status == 'available' %}
+                                <span class="badge bg-success">可用</span>
+                            {% elif ip.status == 'used' %}
+                                <span class="badge bg-secondary">已使用</span>
+                            {% elif ip.status == 'bad' %}
+                                <span class="badge bg-danger">失效</span>
+                            {% else %}
+                                <span class="badge bg-warning">{{ ip.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ moment(ip.created_at).strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>
+                            <button class="btn btn-outline-danger btn-sm" onclick="deleteIP({{ ip.id }})">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">备用池为空</h5>
+            <p class="text-muted">请添加备用 SOCKS5 代理 IP，以便在节点故障时自动切换</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 添加 IP 模态框 -->
+<div class="modal fade" id="addIPModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('main.add_ip') }}" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">批量添加 SOCKS5 IP</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">IP 列表 (一行一个)</label>
+                        <textarea class="form-control font-monospace" name="ip_list" rows="10" placeholder="IP:端口
+IP:端口:用户名:密码" required></textarea>
+                        <div class="form-text">
+                            支持两种格式：<br>
+                            1. IP:Port<br>
+                            2. IP:Port:User:Pass
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">添加</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function deleteIP(id) {
+    if(confirm('确定要删除这个 IP 吗？')) {
+        fetch(`/ip-pool/delete/${id}`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.success) {
+                location.reload();
+            } else {
+                alert('删除失败: ' + data.message);
+            }
+        });
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block page_title %}系统设置{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-cogs"></i> 系统设置</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    
+                    <h6 class="mb-3 text-primary"><i class="fas fa-magic"></i> 自动故障修复</h6>
+                    <div class="mb-3 form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="auto_heal_enabled" name="auto_heal_enabled" value="true" 
+                               {% if settings.get('auto_heal_enabled') == 'true' %}checked{% endif %}>
+                        <label class="form-check-label" for="auto_heal_enabled">启用自动故障检测与修复</label>
+                        <div class="form-text">每 5 分钟检测一次所有服务连通性，若不通则自动从 IP 池切换</div>
+                    </div>
+
+                    <hr>
+
+                    <h6 class="mb-3 text-primary"><i class="fab fa-telegram"></i> Telegram 通知设置</h6>
+                    <div class="mb-3">
+                        <label class="form-label">Bot Token</label>
+                        <input type="text" class="form-control" name="tg_bot_token" value="{{ settings.get('tg_bot_token', '') }}" placeholder="123456789:ABCdef...">
+                        <div class="form-text">从 @BotFather 获取的 API Token</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Chat ID</label>
+                        <input type="text" class="form-control" name="tg_chat_id" value="{{ settings.get('tg_chat_id', '') }}" placeholder="-100xxxxxxx 或 12345678">
+                        <div class="form-text">通知发送的目标用户 ID 或群组 ID</div>
+                    </div>
+
+                    <hr>
+
+                    <h6 class="mb-3 text-primary"><i class="fas fa-sliders-h"></i> 其他设置</h6>
+                    <div class="mb-3">
+                        <label class="form-label">监控间隔 (秒)</label>
+                        <input type="number" class="form-control" name="monitor_interval" value="{{ settings.get('monitor_interval', '30') }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">日志保留天数</label>
+                        <input type="number" class="form-control" name="log_retention_days" value="{{ settings.get('log_retention_days', '30') }}">
+                    </div>
+
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> 保存设置
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

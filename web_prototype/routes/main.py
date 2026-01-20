@@ -140,6 +140,98 @@ def admin():
         flash('加载管理后台失败', 'error')
         return redirect(url_for('main.index'))
 
+@main_bp.route('/ip-pool')
+@admin_required
+def ip_pool():
+    """IP 备用池管理"""
+    try:
+        db = get_db()
+        ips = db.execute('SELECT * FROM ip_pool ORDER BY created_at DESC').fetchall()
+        return render_template('ip_pool.html', ips=ips)
+    except Exception as e:
+        current_app.logger.error(f"加载 IP 池失败: {e}")
+        flash('加载 IP 池失败', 'error')
+        return redirect(url_for('main.index'))
+
+@main_bp.route('/ip-pool/add', methods=['POST'])
+@admin_required
+def add_ip():
+    """添加 IP 到备用池"""
+    try:
+        data = request.form.get('ip_list', '').strip()
+        if not data:
+            flash('请输入 IP 信息', 'error')
+            return redirect(url_for('main.ip_pool'))
+        
+        db = get_db()
+        added_count = 0
+        
+        # 支持批量添加，一行一个
+        lines = data.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # 格式: ip:port:user:pass 或 ip:port
+            parts = line.split(':')
+            if len(parts) >= 2:
+                socks_ip = parts[0]
+                socks_port = int(parts[1])
+                socks_user = parts[2] if len(parts) > 2 else None
+                socks_pass = parts[3] if len(parts) > 3 else None
+                
+                db.execute('''
+                    INSERT INTO ip_pool (socks_ip, socks_port, socks_user, socks_pass)
+                    VALUES (?, ?, ?, ?)
+                ''', (socks_ip, socks_port, socks_user, socks_pass))
+                added_count += 1
+        
+        db.commit()
+        flash(f'成功添加 {added_count} 个 IP', 'success')
+    except Exception as e:
+        flash(f'添加失败: {e}', 'error')
+        
+    return redirect(url_for('main.ip_pool'))
+
+@main_bp.route('/ip-pool/delete/<int:ip_id>', methods=['POST'])
+@admin_required
+def delete_ip(ip_id):
+    """删除备用 IP"""
+    try:
+        db = get_db()
+        db.execute('DELETE FROM ip_pool WHERE id = ?', (ip_id,))
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@main_bp.route('/settings', methods=['GET', 'POST'])
+@admin_required
+def settings():
+    """系统设置"""
+    db = get_db()
+    if request.method == 'POST':
+        try:
+            for key, value in request.form.items():
+                db.execute('''
+                    INSERT INTO system_settings (key, value) 
+                    VALUES (?, ?) 
+                    ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = CURRENT_TIMESTAMP
+                ''', (key, value, value))
+            db.commit()
+            flash('设置已更新', 'success')
+            
+            # 如果启用了自动修复，重启 healer (这里简化处理，实际上 healer 会读取最新配置)
+            
+        except Exception as e:
+            flash(f'保存设置失败: {e}', 'error')
+        return redirect(url_for('main.settings'))
+        
+    settings_rows = db.execute('SELECT * FROM system_settings').fetchall()
+    settings = {row['key']: row['value'] for row in settings_rows}
+    return render_template('settings.html', settings=settings)
+
 @main_bp.route('/logs')
 @login_required
 def view_logs():

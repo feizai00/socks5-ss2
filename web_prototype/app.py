@@ -14,6 +14,7 @@ from routes.main import main_bp
 from routes.services import services_bp
 from routes.api import api_bp
 from api_extensions import register_api_extensions
+from healer import ServiceHealer
 
 # 配置日志
 logging.basicConfig(
@@ -77,6 +78,10 @@ def create_app(test_config=None):
     # 启动系统监控
     monitor.start()
     
+    # 启动自动故障修复监控
+    healer = ServiceHealer(app)
+    healer.start()
+
     # 初始化数据库
     with app.app_context():
         init_db(app)
