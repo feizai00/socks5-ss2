@@ -10,6 +10,25 @@ echo -e "${GREEN}=== Xray Converter Web 管理系统一键部署脚本 ===${NC}"
 
 # 1. 检查 Python 环境
 echo -e "${YELLOW}[1/5] 检查 Python 环境...${NC}"
+
+# 检测并尝试自动安装依赖 (Debian/Ubuntu)
+if command -v apt-get &> /dev/null; then
+    # 检查 python3-venv 是否安装
+    if ! dpkg -s python3-venv &> /dev/null; then
+        echo -e "${YELLOW}检测到缺少 python3-venv，尝试自动安装...${NC}"
+        # 尝试使用 sudo，如果是 root 则直接运行
+        if [ "$(id -u)" -eq 0 ]; then
+             apt-get update && apt-get install -y python3-venv python3-pip
+        else
+             if command -v sudo &> /dev/null; then
+                 sudo apt-get update && sudo apt-get install -y python3-venv python3-pip
+             else
+                 echo -e "${RED}请手动运行: apt-get install -y python3-venv python3-pip${NC}"
+             fi
+        fi
+    fi
+fi
+
 if ! command -v python3 &> /dev/null; then
     echo -e "${RED}错误: 未找到 python3，请先安装 Python 3。${NC}"
     echo "Ubuntu/Debian: sudo apt update && sudo apt install python3 python3-venv python3-pip"
