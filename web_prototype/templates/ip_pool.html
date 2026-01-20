@@ -84,7 +84,6 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <form action="{{ url_for('main.add_ip') }}" method="POST">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="modal-header">
                     <h5 class="modal-title">批量添加 SOCKS5 IP</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -114,10 +113,7 @@ IP:端口:用户名:密码" required></textarea>
 function deleteIP(id) {
     if(confirm('确定要删除这个 IP 吗？')) {
         fetch(`/ip-pool/delete/${id}`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
-            }
+            method: 'POST'
         })
         .then(res => res.json())
         .then(data => {
