@@ -38,22 +38,36 @@ fi
 python3 --version
 
 # 2. 创建虚拟环境
-echo -e "${YELLOW}[2/5] 创建虚拟环境...${NC}"
-if [ ! -d "venv" ]; then
-    python3 -m venv venv
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}创建虚拟环境失败。${NC}"
-        echo -e "${YELLOW}正在清理失败的残留文件...${NC}"
-        rm -rf venv
+echo -e "${YELLOW}[2/5] 创建/重建虚拟环境...${NC}"
+# 强制删除旧的 venv 以确保环境纯净
+rm -rf venv
+
+python3 -m venv venv
+if [ $? -ne 0 ]; then
+    echo -e "${RED}创建虚拟环境失败。${NC}"
+    echo -e "${YELLOW}正在尝试安装 python3-venv...${NC}"
+    if command -v apt-get &> /dev/null; then
+        apt-get update && apt-get install -y python3-venv
+        # 重试创建
+        python3 -m venv venv
+        if [ $? -ne 0 ]; then
+             echo -e "${RED}重试失败。请检查系统环境。${NC}"
+             exit 1
+        fi
+    else
         exit 1
     fi
 fi
-source venv/bin/activate
 
 # 3. 安装依赖
 echo -e "${YELLOW}[3/5] 安装 Python 依赖...${NC}"
-pip install --upgrade pip
-pip install -r web_prototype/requirements.txt
+# 显式使用虚拟环境的 pip，避免 source 不生效的问题
+./venv/bin/pip install --upgrade pip
+./venv/bin/pip install --no-cache-dir -r web_prototype/requirements.txt
+if [ $? -ne 0 ]; then
+    echo -e "${RED}依赖安装失败。${NC}"
+    exit 1
+fi
 
 # 4. 检查 Xray 核心
 echo -e "${YELLOW}[4/5] 检查 Xray 核心...${NC}"
