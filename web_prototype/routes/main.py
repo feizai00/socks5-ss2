@@ -1,11 +1,12 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, jsonify
 from functools import wraps
 from database import get_db
-from utils import log_operation
+from utils import log_operation, SSLinkUtils  # 导入 SSLinkUtils
 from system_monitor import monitor
 import os
 
 main_bp = Blueprint('main', __name__)
+ss_utils = SSLinkUtils()  # 初始化
 
 # 认证装饰器
 def login_required(f):
@@ -57,6 +58,16 @@ def index():
             ).fetchall()
             services = [dict(s) for s in services]
             total_users = 0
+
+        # 为每个服务生成 SS 链接
+        for s in services:
+            s['ss_link'] = ss_utils.generate_ss_link(
+                s['ss_password'],
+                request.host.split(':')[0], # 获取当前访问的主机名/IP
+                s['port'],
+                s['node_name'],
+                s['method']
+            )
 
         # 计算状态
         stats = {

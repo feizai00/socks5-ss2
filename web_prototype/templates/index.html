@@ -168,20 +168,17 @@
                         <td>
                             {% if service.get('ss_link') %}
                                 <div class="btn-group btn-group-sm" role="group">
-                                    <button type="button" class="btn btn-outline-primary btn-sm" 
-                                            onclick="showSSLink('{{ service.port }}', '{{ service.ss_link }}')" title="查看SS链接">
-                                        <i class="fas fa-link"></i>
-                                        查看链接
+                                    <button type="button" class="btn btn-outline-dark btn-sm" 
+                                            onclick="showSSLink('{{ service.port }}', '{{ service.ss_link }}')" title="查看二维码">
+                                        <i class="fas fa-qrcode"></i>
                                     </button>
                                     <button class="btn btn-outline-success btn-sm" type="button" 
                                             onclick="copySSLink('{{ service.port }}', '{{ service.ss_link }}')" title="复制SS链接">
                                         <i class="fas fa-copy"></i>
-                                        复制
                                     </button>
                                     <button class="btn btn-outline-warning btn-sm" type="button" 
                                             onclick="testSSLink('{{ service.port }}')" title="测试SS链接">
                                         <i class="fas fa-wifi"></i>
-                                        测试
                                     </button>
                                 </div>
                                 <!-- 隐藏的输入框用于复制 -->
@@ -372,8 +369,21 @@
             'delete': '删除'
         };
         
-        if (!confirm(`确认${actionNames[action]} ${ports.length} 个选中的服务？`)) {
-            return;
+        // 删除操作增加二次确认逻辑
+        if (action === 'delete') {
+            // 第一次确认
+            if (!confirm(`警告：您即将删除 ${ports.length} 个服务！\n\n删除操作不可恢复，确定要继续吗？`)) {
+                return;
+            }
+            // 第二次确认
+            if (!confirm(`请再次确认：\n\n您真的要永久删除这 ${ports.length} 个服务吗？`)) {
+                return;
+            }
+        } else {
+             // 其他操作只需一次确认
+             if (!confirm(`确认${actionNames[action]} ${ports.length} 个选中的服务？`)) {
+                 return;
+             }
         }
         
         // 执行批量操作
