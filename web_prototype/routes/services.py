@@ -72,6 +72,10 @@ def add_service():
                     else:
                         raise ValueError("格式错误，应为: 节点名称:IP:端口:用户名:密码:有效期")
                 
+                # 检查 parts 是否为空字符串导致的解析错误
+                if not parts[0].strip():
+                     raise ValueError("格式错误: 节点名称不能为空")
+
                 data['node_name'] = parts[0].strip()
                 data['socks_ip'] = parts[1].strip()
                 data['socks_port'] = parts[2].strip()
@@ -121,6 +125,15 @@ def add_service():
             
             # 检查端口是否已使用
             db = get_db()
+            
+            # 检查节点名称是否重复 (新增)
+            existing_name = db.execute(
+                'SELECT id FROM services WHERE node_name = ? AND deleted_at IS NULL',
+                (data['node_name'],)
+            ).fetchone()
+            if existing_name:
+                raise ValueError(f"节点名称 '{data['node_name']}' 已存在，请使用其他名称")
+            
             while True:
                 existing = db.execute(
                     'SELECT id FROM services WHERE port = ? AND deleted_at IS NULL', 
