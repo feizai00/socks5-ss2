@@ -1,10 +1,11 @@
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request, session, current_app
 from functools import wraps
 from database import get_db
-from utils import log_operation
+from utils import log_operation, SSLinkUtils
 from xray_manager import XrayManager
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
+ss_utils = SSLinkUtils()
 
 # 认证装饰器
 def login_required(f):
@@ -51,6 +52,11 @@ def delete_service_by_port(port):
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@api_bp.route('/service/<int:service_id>/status')
+@login_required
+def get_service_status(service_id):
+    """获取服务状态"""
     db = get_db()
     service = db.execute('SELECT port FROM services WHERE id = ?', (service_id,)).fetchone()
     
@@ -61,6 +67,85 @@ def delete_service_by_port(port):
     status = 'running' if is_running else 'stopped'
     
     return jsonify({'status': status})
+
+@api_bp.route('/services/<port>/test-ss', methods=['POST'])
+@login_required
+def test_ss_link(port):
+    """测试SS链接 (检查本地端口是否监听)"""
+    try:
+        port = int(port)
+        # 测试本地端口连通性
+        # 使用 127.0.0.1 测试本地服务是否正常启动
+        latency = ss_utils.test_connection('127.0.0.1', port)
+        
+        if latency >= 0:
+            return jsonify({'success': True, 'latency': latency, 'message': '服务正常'})
+        else:
+            return jsonify({'success': False, 'message': '端口无法连接'}), 500
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@api_bp.route('/test-ss-batch', methods=['POST'])
+@login_required
+def batch_test_ss_link():
+    """批量测试SS链接"""
+    data = request.get_json()
+    ports = data.get('ports', [])
+    
+    db = get_db()
+    results = []
+    success_count = 0
+    
+    for port in ports:
+        try:
+            port_int = int(port)
+            # 获取服务信息
+            service = db.execute(
+                'SELECT node_name, socks_ip, socks_port FROM services WHERE port = ?',
+                (str(port_int),)
+            ).fetchone()
+            
+            node_name = service['node_name'] if service else '未知服务'
+            server_ip = '127.0.0.1' # 测试的是本地服务
+            
+            latency = ss_utils.test_connection(server_ip, port_int)
+            
+            result_item = {
+                'port': port_int,
+                'node_name': node_name,
+                'server': request.host.split(':')[0], # 返回给前端显示的服务器地址
+                'server_port': port_int,
+                'success': latency >= 0,
+                'latency': latency,
+                'message': '连接成功' if latency >= 0 else '无法连接'
+            }
+            
+            if latency >= 0:
+                success_count += 1
+                
+            results.append(result_item)
+            
+        except Exception as e:
+            results.append({
+                'port': port,
+                'node_name': '未知',
+                'server': 'unknown',
+                'server_port': port,
+                'success': False,
+                'latency': -1,
+                'message': f'错误: {str(e)}'
+            })
+            
+    return jsonify({
+        'success': True,
+        'summary': {
+            'total': len(ports),
+            'success': success_count
+        },
+        'results': results
+    })
+
 
 @api_bp.route('/service/<int:service_id>/logs')
 @login_required
