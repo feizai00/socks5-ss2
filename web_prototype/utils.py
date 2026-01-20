@@ -4,6 +4,12 @@ import urllib.parse
 import socket
 import json
 import logging
+import subprocess
+import tempfile
+import os
+import shutil
+import time
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import request, session, current_app
 from database import get_db
@@ -195,48 +201,129 @@ class SSLinkUtils:
             return None
     
     def test_connection(self, server, port, timeout=None):
-        """测试服务器连接，通过代理访问 tiktok.com 返回延迟(ms)"""
+        """测试服务器连接，返回延迟(ms)"""
         import time
-        import requests
-        
         if timeout is None:
-            timeout = 10  # 增加超时时间以适应实际网络请求
+            timeout = self.timeout
             
         try:
-            # 构造代理配置
-            # 使用 socks5h:// 协议让 DNS 解析也通过代理，防止 DNS 污染
-            proxy_url = f'socks5h://{server}:{port}'
-            proxies = {
-                'http': proxy_url,
-                'https': proxy_url
-            }
-            
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-            
             start_time = time.time()
-            
-            # 请求 tiktok.com
-            # verify=False 忽略 SSL 证书验证，专注于连通性测试
-            response = requests.get(
-                'https://www.tiktok.com', 
-                proxies=proxies, 
-                headers=headers, 
-                timeout=timeout,
-                verify=False
-            )
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(timeout)
+            result = sock.connect_ex((server, port))
+            sock.close()
             
             end_time = time.time()
             
-            # 只要能收到响应，就说明链路是通的
-            if response.status_code > 0:
+            if result == 0:
                 latency = int((end_time - start_time) * 1000)
                 return latency
             else:
                 return -1
-                
-        except Exception as e:
-            # 记录详细错误以便调试
-            logger.debug(f"代理测试失败 {server}:{port} - {str(e)}")
+        except Exception:
             return -1
+
+    def test_proxy_connection(self, ss_port, ss_password, ss_method="aes-256-gcm", target_url="http://www.tiktok.com", timeout=10):
+        """
+        通过启动临时 Xray 客户端将 SS 转换为 SOCKS5，
+        然后使用 requests 测试目标 URL 连通性。
+        """
+        # 1. 获取一个空闲的本地端口用于 SOCKS5 监听
+        local_socks_port = 0
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('', 0))
+                local_socks_port = s.getsockname()[1]
+        except Exception as e:
+            logger.error(f"Failed to bind free port: {e}")
+            return -1
+
+        # 2. 生成临时 Xray 客户端配置
+        # 本地 SOCKS5 -> Outbound SS (指向 127.0.0.1:ss_port)
+        client_config = {
+            "log": {
+                "loglevel": "error"
+            },
+            "inbounds": [
+                {
+                    "port": local_socks_port,
+                    "listen": "127.0.0.1",
+                    "protocol": "socks",
+                    "settings": {
+                        "auth": "noauth",
+                        "udp": True
+                    }
+                }
+            ],
+            "outbounds": [
+                {
+                    "protocol": "shadowsocks",
+                    "settings": {
+                        "servers": [
+                            {
+                                "address": "127.0.0.1",
+                                "port": int(ss_port),
+                                "method": ss_method,
+                                "password": ss_password
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+
+        # 3. 写入临时配置文件
+        tmp_dir = tempfile.mkdtemp()
+        config_path = os.path.join(tmp_dir, f'test_config_{ss_port}_{int(time.time())}.json')
+        
+        try:
+            with open(config_path, 'w') as f:
+                json.dump(client_config, f)
+
+            # 4. 启动临时 Xray 进程
+            xray_bin = current_app.config.get('XRAY_BIN_PATH', 'xray')
+            process = subprocess.Popen(
+                [xray_bin, 'run', '-config', config_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+
+            # 等待进程启动
+            time.sleep(1) 
+            
+            # 5. 使用 requests 发送请求
+            proxies = {
+                'http': f'socks5h://127.0.0.1:{local_socks_port}',
+                'https': f'socks5h://127.0.0.1:{local_socks_port}'
+            }
+            
+            start_time = time.time()
+            try:
+                # 使用 Session 以便复用连接
+                resp = requests.get(target_url, proxies=proxies, timeout=timeout)
+                # 检查响应状态码，如果返回数据说明通了
+                # 用户要求: "如果返回数据就说明是正常的"
+                if resp.status_code < 500: # 只要不是服务器错误，或者连接错误，都算通
+                    end_time = time.time()
+                    latency = int((end_time - start_time) * 1000)
+                    return latency
+                else:
+                    return -1
+            except Exception as e:
+                # logger.error(f"Proxy test failed: {e}")
+                return -1
+            finally:
+                # 6. 清理进程
+                process.terminate()
+                try:
+                    process.wait(timeout=2)
+                except:
+                    process.kill()
+
+        except Exception as e:
+            logger.error(f"Test setup failed: {e}")
+            return -1
+        finally:
+            # 7. 清理临时文件
+            if os.path.exists(tmp_dir):
+                shutil.rmtree(tmp_dir)

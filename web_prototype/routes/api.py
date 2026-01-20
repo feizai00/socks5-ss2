@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request, session, current_app
 from functools import wraps
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from database import get_db
 from utils import log_operation, SSLinkUtils
 from xray_manager import XrayManager
@@ -71,17 +72,32 @@ def get_service_status(service_id):
 @api_bp.route('/services/<port>/test-ss', methods=['POST'])
 @login_required
 def test_ss_link(port):
-    """测试SS链接 (检查本地端口是否监听)"""
+    """测试SS链接 (通过实际代理请求测试)"""
     try:
         port = int(port)
-        # 测试本地端口连通性
+        db = get_db()
+        # 获取服务信息
+        service = db.execute(
+            'SELECT ss_password, method FROM services WHERE port = ?',
+            (port,)
+        ).fetchone()
+        
+        if not service:
+             return jsonify({'success': False, 'message': '服务不存在'}), 404
+
+        ss_password = service['ss_password']
+        method = service.get('method', 'aes-256-gcm')
+        if not method:
+            method = 'aes-256-gcm'
+
+        # 测试代理连通性
         # 使用 127.0.0.1 测试本地服务是否正常启动
-        latency = ss_utils.test_connection('127.0.0.1', port)
+        latency = ss_utils.test_proxy_connection(port, ss_password, method)
         
         if latency >= 0:
-            return jsonify({'success': True, 'latency': latency, 'message': '服务正常'})
+            return jsonify({'success': True, 'latency': latency, 'message': '服务正常 (TikTok连通)'})
         else:
-            return jsonify({'success': False, 'message': '端口无法连接'}), 500
+            return jsonify({'success': False, 'message': '服务无法连接目标网站'}), 500
             
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -95,37 +111,39 @@ def batch_test_ss_link():
     
     db = get_db()
     results = []
-    success_count = 0
     
+    # 准备测试任务
+    service_configs = []
     for port in ports:
         try:
             port_int = int(port)
             # 获取服务信息
             service = db.execute(
-                'SELECT node_name, socks_ip, socks_port FROM services WHERE port = ?',
+                'SELECT node_name, ss_password, method FROM services WHERE port = ?',
                 (str(port_int),)
             ).fetchone()
             
-            node_name = service['node_name'] if service else '未知服务'
-            server_ip = '127.0.0.1' # 测试的是本地服务
-            
-            latency = ss_utils.test_connection(server_ip, port_int)
-            
-            result_item = {
-                'port': port_int,
-                'node_name': node_name,
-                'server': request.host.split(':')[0], # 返回给前端显示的服务器地址
-                'server_port': port_int,
-                'success': latency >= 0,
-                'latency': latency,
-                'message': '连接成功' if latency >= 0 else '无法连接'
-            }
-            
-            if latency >= 0:
-                success_count += 1
-                
-            results.append(result_item)
-            
+            if service:
+                method = service.get('method')
+                if not method:
+                    method = 'aes-256-gcm'
+                    
+                service_configs.append({
+                    'port': port_int,
+                    'node_name': service['node_name'],
+                    'ss_password': service['ss_password'],
+                    'method': method
+                })
+            else:
+                 results.append({
+                    'port': port_int,
+                    'node_name': '未知',
+                    'server': request.host.split(':')[0] if request.host else 'unknown',
+                    'server_port': port_int,
+                    'success': False,
+                    'latency': -1,
+                    'message': '服务不存在'
+                })
         except Exception as e:
             results.append({
                 'port': port,
@@ -137,11 +155,49 @@ def batch_test_ss_link():
                 'message': f'错误: {str(e)}'
             })
             
+    # 并发测试
+    if service_configs:
+        # 限制并发数为5，避免卡死服务器
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_port = {
+                executor.submit(
+                    ss_utils.test_proxy_connection, 
+                    config['port'], 
+                    config['ss_password'], 
+                    config['method']
+                ): config 
+                for config in service_configs
+            }
+            
+            for future in as_completed(future_to_port):
+                config = future_to_port[future]
+                try:
+                    latency = future.result()
+                    results.append({
+                        'port': config['port'],
+                        'node_name': config['node_name'],
+                        'server': request.host.split(':')[0] if request.host else 'unknown',
+                        'server_port': config['port'],
+                        'success': latency >= 0,
+                        'latency': latency,
+                        'message': '连接成功' if latency >= 0 else '无法连接'
+                    })
+                except Exception as e:
+                    results.append({
+                        'port': config['port'],
+                        'node_name': config['node_name'],
+                        'server': request.host.split(':')[0] if request.host else 'unknown',
+                        'server_port': config['port'],
+                        'success': False,
+                        'latency': -1,
+                        'message': f'测试出错: {str(e)}'
+                    })
+            
     return jsonify({
         'success': True,
         'summary': {
             'total': len(ports),
-            'success': success_count
+            'success': sum(1 for r in results if r['success'])
         },
         'results': results
     })
