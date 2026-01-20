@@ -43,6 +43,8 @@ if [ ! -d "venv" ]; then
     python3 -m venv venv
     if [ $? -ne 0 ]; then
         echo -e "${RED}创建虚拟环境失败。${NC}"
+        echo -e "${YELLOW}正在清理失败的残留文件...${NC}"
+        rm -rf venv
         exit 1
     fi
 fi
