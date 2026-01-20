@@ -63,35 +63,113 @@ def add_service():
             if mode == 'quick':
                 # 一键添加模式
                 quick_input = request.form.get('quick_input', '').strip()
-                parts = quick_input.split(':')
+                # 按行分割，过滤空行
+                lines = [line.strip() for line in quick_input.splitlines() if line.strip()]
                 
-                if len(parts) < 6:
-                    # 尝试兼容旧格式 (无有效期)
-                    if len(parts) >= 5:
-                        parts.append('0') # 默认为0
-                    else:
-                        raise ValueError("格式错误，应为: 节点名称:IP:端口:用户名:密码:有效期")
+                if not lines:
+                    raise ValueError("输入内容不能为空")
                 
-                # 检查 parts 是否为空字符串导致的解析错误
-                if not parts[0].strip():
-                     raise ValueError("格式错误: 节点名称不能为空")
+                success_count = 0
+                errors = []
+                
+                for i, line in enumerate(lines):
+                    try:
+                        parts = line.split(':')
+                        
+                        if len(parts) < 6:
+                            # 尝试兼容旧格式 (无有效期)
+                            if len(parts) >= 5:
+                                parts.append('0') # 默认为0
+                            else:
+                                raise ValueError(f"第 {i+1} 行格式错误，应为: 节点名称:IP:端口:用户名:密码:有效期")
+                        
+                        # 检查 parts 是否为空字符串导致的解析错误
+                        if not parts[0].strip():
+                             raise ValueError(f"第 {i+1} 行格式错误: 节点名称不能为空")
+        
+                        # 构造单个服务数据
+                        service_data = {
+                            'port': str(random.randint(10000, 60000)),
+                            'ss_password': secrets.token_urlsafe(16),
+                            'method': request.form.get('method', 'aes-256-gcm'),
+                            'node_name': parts[0].strip(),
+                            'socks_ip': parts[1].strip(),
+                            'socks_port': parts[2].strip(),
+                            'socks_user': parts[3].strip(),
+                            'socks_pass': parts[4].strip(),
+                            'expires_at': 0
+                        }
+                        
+                        validity = parts[5].strip()
+                        # 计算有效期
+                        if validity in ['0', 'permanent', '永久']:
+                            service_data['expires_at'] = 0
+                        elif validity.isdigit():
+                            days = int(validity)
+                            if days > 0:
+                                service_data['expires_at'] = int(time.time()) + days * 86400
+                                
+                        # 检查端口唯一性
+                        db = get_db()
+                        while True:
+                            existing = db.execute(
+                                'SELECT id FROM services WHERE port = ? AND deleted_at IS NULL', 
+                                (service_data['port'],)
+                            ).fetchone()
+                            if not existing:
+                                break
+                            service_data['port'] = str(random.randint(10000, 60000))
+                            
+                        # 检查名称唯一性
+                        existing_name = db.execute(
+                            'SELECT id FROM services WHERE node_name = ? AND deleted_at IS NULL',
+                            (service_data['node_name'],)
+                        ).fetchone()
+                        if existing_name:
+                             raise ValueError(f"节点名称 '{service_data['node_name']}' 已存在")
 
-                data['node_name'] = parts[0].strip()
-                data['socks_ip'] = parts[1].strip()
-                data['socks_port'] = parts[2].strip()
-                data['socks_user'] = parts[3].strip()
-                data['socks_pass'] = parts[4].strip()
-                validity = parts[5].strip()
+                        # 保存到数据库
+                        cursor = db.execute('''
+                            INSERT INTO services (
+                                port, node_name, socks_ip, socks_port, socks_user, socks_pass,
+                                ss_password, method, status, created_by, expires_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            service_data['port'], service_data['node_name'], service_data['socks_ip'], service_data['socks_port'],
+                            service_data['socks_user'], service_data['socks_pass'], service_data['ss_password'], 
+                            service_data['method'], 'stopped', session['user_id'], service_data['expires_at']
+                        ))
+                        db.commit()
+                        service_id = cursor.lastrowid
+                        
+                        # 自动启动服务
+                        XrayManager.start_service(int(service_data['port']), service_data)
+                        
+                        # 更新状态
+                        db.execute(
+                            'UPDATE services SET status = ? WHERE id = ?',
+                            ('running', service_id)
+                        )
+                        db.commit()
+                        
+                        log_operation('create_service', service_data['node_name'], f"创建服务 端口:{service_data['port']}")
+                        success_count += 1
+                        
+                    except Exception as line_e:
+                        errors.append(str(line_e))
+                        current_app.logger.error(f"处理第 {i+1} 行失败: {line_e}")
                 
-                # 计算有效期
-                if validity in ['0', 'permanent', '永久']:
-                    data['expires_at'] = 0
-                elif validity.isdigit():
-                    days = int(validity)
-                    if days > 0:
-                        data['expires_at'] = int(time.time()) + days * 86400
+                if success_count > 0:
+                    flash(f"成功添加 {success_count} 个服务", 'success')
+                
+                if errors:
+                    for err in errors:
+                        flash(err, 'error')
+                        
+                return redirect(url_for('main.index'))
+
             else:
-                # 手动模式
+                # 手动模式 (保持不变)
                 data['node_name'] = request.form.get('node_name', '').strip()
                 data['socks_ip'] = request.form.get('socks_ip', '').strip()
                 data['socks_port'] = request.form.get('socks_port', '').strip()

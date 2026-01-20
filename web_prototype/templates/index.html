@@ -390,6 +390,36 @@
         let completed = 0;
         const total = ports.length;
         
+        // 如果是批量删除，使用 Promise.all 并行处理，避免循环中的确认弹窗
+        if (action === 'delete') {
+            const deletePromises = ports.map(port => {
+                return fetch(`/api/services/${port}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken()
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) return { success: true, port: port };
+                    return { success: false, port: port, error: data.error };
+                })
+                .catch(err => ({ success: false, port: port, error: '网络错误' }));
+            });
+
+            Promise.all(deletePromises).then(results => {
+                const successCount = results.filter(r => r.success).length;
+                if (successCount === total) {
+                    showToast(`批量删除完成: ${successCount} 个服务`, 'success');
+                } else {
+                    showToast(`批量删除完成: 成功 ${successCount} / 失败 ${total - successCount}`, 'warning');
+                }
+                setTimeout(() => location.reload(), 1000);
+            });
+            return; // 结束函数，不执行后面的 forEach
+        }
+        
         ports.forEach(port => {
             switch(action) {
                 case 'start':
