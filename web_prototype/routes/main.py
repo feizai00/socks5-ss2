@@ -291,7 +291,25 @@ def view_logs():
 @login_required
 def system_monitor_page():
     """系统监控页面"""
-    return render_template('monitor.html')
+    try:
+        db = get_db()
+        user_id = session['user_id']
+        is_admin = session.get('role') == 'admin'
+
+        if is_admin:
+            services = db.execute('SELECT * FROM services WHERE deleted_at IS NULL').fetchall()
+        else:
+            services = db.execute(
+                'SELECT * FROM services WHERE created_by = ? AND deleted_at IS NULL',
+                (user_id,)
+            ).fetchall()
+        
+        services = [dict(s) for s in services]
+        
+        return render_template('monitor.html', services=services)
+    except Exception as e:
+        current_app.logger.error(f"加载监控页面失败: {e}")
+        return render_template('error.html', error="加载数据失败"), 500
 
 @main_bp.route('/api/monitor/stats')
 @login_required

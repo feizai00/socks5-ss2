@@ -184,6 +184,8 @@ class SystemMonitor:
             return {
                 'total_sent': self._bytes_to_gb(net_io.bytes_sent),
                 'total_recv': self._bytes_to_gb(net_io.bytes_recv),
+                'bytes_sent': net_io.bytes_sent,
+                'bytes_recv': net_io.bytes_recv,
                 'packets_sent': net_io.packets_sent,
                 'packets_recv': net_io.packets_recv,
                 'interfaces': interfaces
@@ -289,12 +291,25 @@ class SystemMonitor:
                         # 检查端口监听
                         port_listening = self._check_port_listening(int(port_dir))
                         
+                        # 获取连接数
+                        connection_count = 0
+                        if pid and psutil.pid_exists(pid):
+                            try:
+                                proc = psutil.Process(pid)
+                                # count established connections
+                                connections = proc.connections()
+                                connection_count = len(connections)
+                            except:
+                                pass
+
                         services.append({
                             'port': int(port_dir),
                             'status': status,
                             'pid': pid,
                             'port_listening': port_listening,
-                            'log_exists': os.path.exists(log_file)
+                            'log_exists': os.path.exists(log_file),
+                            'connections': connection_count,
+                            'traffic': 0  # 暂无法获取准确的单进程流量
                         })
             
             return services
