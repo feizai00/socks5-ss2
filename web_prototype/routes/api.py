@@ -59,12 +59,19 @@ def delete_service_by_port(port):
 def get_service_status(service_id):
     """获取服务状态"""
     db = get_db()
-    service = db.execute('SELECT port FROM services WHERE id = ?', (service_id,)).fetchone()
+    service = db.execute('SELECT port, server_id FROM services WHERE id = ?', (service_id,)).fetchone()
     
     if not service:
         return jsonify({'error': 'Service not found'}), 404
         
-    is_running, _ = XrayManager.is_running(service['port'])
+    server_info = None
+    if service['server_id']:
+        server = db.execute('SELECT * FROM servers WHERE id = ?', (service['server_id'],)).fetchone()
+        if server:
+            server_info = dict(server)
+    
+    manager = XrayManager.get_manager(server_info)
+    is_running, _ = manager.is_running(service['port'])
     status = 'running' if is_running else 'stopped'
     
     return jsonify({'status': status})
@@ -208,16 +215,20 @@ def batch_test_ss_link():
 def get_service_logs(service_id):
     """获取服务日志"""
     db = get_db()
-    service = db.execute('SELECT port FROM services WHERE id = ?', (service_id,)).fetchone()
+    service = db.execute('SELECT port, server_id FROM services WHERE id = ?', (service_id,)).fetchone()
     
     if not service:
         return jsonify({'error': 'Service not found'}), 404
         
     try:
-        log_file = XrayManager.get_log_file(service['port'])
-        with open(log_file, 'r') as f:
-            lines = f.readlines()
-            logs = lines[-100:] # 最后100行
-        return jsonify({'logs': ''.join(logs)})
+        server_info = None
+        if service['server_id']:
+            server = db.execute('SELECT * FROM servers WHERE id = ?', (service['server_id'],)).fetchone()
+            if server:
+                server_info = dict(server)
+        
+        manager = XrayManager.get_manager(server_info)
+        logs = manager.get_log_content(service['port'])
+        return jsonify({'logs': logs})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
