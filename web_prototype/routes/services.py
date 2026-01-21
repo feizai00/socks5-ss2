@@ -372,15 +372,23 @@ def edit_service(service_id):
         
     if request.method == 'POST':
         # 获取表单数据
+        raw_ss_password = request.form.get('ss_password', '').strip()
+        
         data = {
             'node_name': request.form.get('node_name', '').strip(),
             'socks_ip': request.form.get('socks_ip', '').strip(),
             'socks_port': request.form.get('socks_port', '').strip(),
             'socks_user': request.form.get('socks_user', '').strip(),
             'socks_pass': request.form.get('socks_pass', '').strip(),
-            'ss_password': request.form.get('ss_password', '').strip(),
             'method': request.form.get('method', 'aes-256-gcm')
         }
+        
+        # 只有当用户输入了新密码时才更新密码
+        if raw_ss_password:
+            data['ss_password'] = raw_ss_password
+        else:
+            # 如果为空，保留原密码
+            data['ss_password'] = service['ss_password']
         
         # 验证...
         # 这里简化验证逻辑，实际上应该和add_service一样严格

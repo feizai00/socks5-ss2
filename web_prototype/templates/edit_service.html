@@ -42,14 +42,9 @@
                         
                         <div class="mb-3">
                             <label for="ss_password" class="form-label">SS密码</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control" id="ss_password" name="ss_password" 
-                                       value="{{ service.get('password', '') }}" required>
-                                <button class="btn btn-outline-secondary" type="button" onclick="generatePassword()">
-                                    <i class="fas fa-random"></i>
-                                    生成
-                                </button>
-                            </div>
+                            <input type="text" class="form-control" id="ss_password" name="ss_password" 
+                                   value="{{ service.get('ss_password', '') }}" readonly>
+                            <div class="form-text">为了保持连接不变，SS密码默认不可修改。如需修改请重新添加服务。</div>
                         </div>
                     </div>
 
