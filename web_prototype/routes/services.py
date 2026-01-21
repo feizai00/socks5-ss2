@@ -405,12 +405,22 @@ def edit_service(service_id):
             service_data = dict(service)
             service_data.update(data)
             
+            # 获取服务器信息
+            server_info = None
+            if service['server_id']:
+                server = db.execute('SELECT * FROM servers WHERE id = ?', (service['server_id'],)).fetchone()
+                if server:
+                    server_info = dict(server)
+            
+            manager = XrayManager.get_manager(server_info)
+            
             if service['status'] == 'running':
-                XrayManager.restart_service(service['port'], service_data)
+                manager.restart_service(service['port'], service_data)
                 flash('服务配置已更新并重启', 'success')
             else:
                 # 即使没运行，也重新生成配置文件
-                XrayManager.generate_config(service_data)
+                # generate_config 是静态方法，但我们需要保存配置，所以用 update_config
+                manager.update_config(service['port'], service_data)
                 flash('服务配置已更新', 'success')
                 
             log_operation('edit_service', data['node_name'], f"更新服务 ID:{service_id}")

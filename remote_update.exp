@@ -1,0 +1,20 @@
+#!/usr/bin/expect -f
+
+set timeout 120
+set ip "154.29.154.221"
+set user "root"
+set password {2!hc*8qkgFF90S!Un4}
+# 组合命令：进入目录 -> 拉取更新 -> 重启服务
+set cmd "cd ~/socks5-ss2 && git pull && ./stop.sh && ./start.sh"
+
+spawn ssh -o StrictHostKeyChecking=no $user@$ip $cmd
+
+expect {
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    eof
+}
+catch wait result
+exit [lindex $result 3]
